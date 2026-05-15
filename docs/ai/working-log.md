@@ -1,5 +1,378 @@
 # Working Log
 
+## 2026-05-15 - History Manager Agent MVP 마감 정리
+
+- `docs/ai/current-plan.md`에서 feature1-7, 전체 MVP 완료 기준, OpenAI live smoke test opt-in 원칙, 수정/미수정 영역 표현을 마감 상태로 정리했다.
+- 기존 feature7 기록에 MVP 완료 여부가 이미 남아 있어 구현 완료 기록은 중복하지 않았다.
+- 불필요한 macOS `.DS_Store` 파일을 삭제했고, 기능 코드 변경은 하지 않았다.
+- 검증 결과: `python3.11 -m pytest` 76 passed, `python3.11 -m compileall src scripts` 성공, `./scripts/format.sh` 성공, `./scripts/lint.sh` 성공, `./scripts/test.sh` 성공, `./scripts/verify.sh` 성공.
+- 민감정보 패턴 점검 결과 실제 OpenAI API key 형태, raw Authorization header 값, secret-like credential literal은 발견되지 않았다.
+- 남은 항목은 MVP 제외 후속 확장이다: BFF adapter, conversation DB/cache adapter, RAG 검색 실행, Query Routing Agent, Answer Generation Agent, Answer Verification Agent, SSE streaming, live evaluation/prompt regression 자동화.
+
+## 2026-05-15 - History Manager Agent feature7_fixture_and_safety_tests
+
+### 작업 목표
+
+- History Manager Agent MVP 전체를 synthetic fixture 기반으로 검증한다.
+- CLI stdout/stderr, output JSON, report, failed output의 민감정보 비노출을 테스트로 고정한다.
+- 실제 OpenAI live API 호출, BFF/DB/RAG/다른 Agent/SSE 구현은 하지 않고 MVP 범위 경계를 명시한다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/fixtures/history/*.json` synthetic fixture를 추가했다.
+- `ai-agent/history-manager-agent/tests/integration/test_fixture_safety.py`를 먼저 작성했다.
+- 최초 fixture/safety 테스트 10개는 feature1-6 구현만으로 통과했다.
+- MVP 제외 기능 명시를 고정하는 테스트를 추가했고, `mvp_scope` 미구현으로 `KeyError: 'mvp_scope'` 실패를 확인했다.
+- 테스트 케이스에는 fixture 민감정보 검사, follow-up/new-topic/ambiguous full workflow, empty history, long history trimming, malformed history warning, provider failure failed output, CLI redaction, output shape, 원본 history 과다 복제 방지, MVP 제외 기능 marker 검증을 포함했다.
+
+### 구현 내용
+
+- `follow_up_input.json`, `new_topic_input.json`, `ambiguous_input.json`, `empty_history_input.json`, `long_history_input.json`, `malformed_history_input.json`, `provider_failure_input.json` fixture를 추가했다.
+- fixture는 모두 synthetic 값만 사용하고 실제 회사 문서, 개인정보, 실제 API key, token, secret 값을 포함하지 않았다.
+- `workflow.py`에 `MVP_EXCLUDED_CAPABILITIES` marker를 추가했다.
+- success output, failed output, report에 `mvp_scope.excluded_capabilities`를 포함해 BFF API adapter, conversation DB repository, RAG search, Query Routing Agent, Answer Generation Agent, Answer Verification Agent, SSE streaming이 `not_supported_in_mvp`임을 명시했다.
+- 기능 확장은 하지 않고 feature1-6 구현을 fixture/safety 관점에서 검증했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_fixture_safety.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_fixture_safety.py`: 구현 전 `mvp_scope` 실패 확인 후, 구현 후 11 passed.
+- `python3.11 -m pytest`: 76 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### MVP 완료 여부
+
+- History Manager Agent MVP feature1-7 구현과 fixture/safety 검증을 완료했다.
+- 남은 항목은 MVP 제외 범위의 후속 확장이다: BFF adapter, conversation DB repository/cache adapter, RAG 검색 실행, Query Routing Agent 구현, Answer Generation Agent 구현, Answer Verification Agent 구현, SSE streaming, live evaluation/prompt regression 자동화.
+
+## 2026-05-15 - History Manager Agent feature6_langgraph_workflow_and_cli
+
+### 작업 목표
+
+- input normalization, LLM classification, context policy, contextualized question, Query Routing input builder를 workflow와 CLI 수동 실행 흐름으로 연결한다.
+- LangGraph optional wrapper와 sequential fallback을 제공한다.
+- 실제 OpenAI live API 호출 테스트, BFF/DB/RAG/다른 Agent/SSE 구현은 하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/integration/test_workflow_cli.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `history_manager_agent.workflow` package 미구현으로 `ModuleNotFoundError` 실패를 확인했다.
+- 전체 suite 실행 중 feature1 시절 CLI skeleton 기대값이 feature6 실제 workflow 동작과 충돌하는 것을 확인하고, CLI workflow 실행 기대값으로 테스트를 조정했다.
+- 테스트 케이스에는 fake provider 기반 full workflow node trace, decision/routing/report output 파일 생성, follow-up/new-topic/ambiguous fixture 처리, malformed input safe failed output/report, provider failure failed item/report, CLI 실행, LangGraph fallback, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/history-manager-agent/src/history_manager_agent/workflow.py`를 추가했다.
+- `HistoryManagerWorkflowState`, `HistoryManagerWorkflowResult`, `HistoryManagerWorkflow`, `build_history_manager_workflow()`, `run_history_manager_workflow()`를 구현했다.
+- node 흐름은 `load_config -> load_input -> normalize_history -> trim_history -> classify_history -> apply_context_policy -> build_contextualized_question -> build_routing_input -> write_output -> write_report` 순서로 기록된다.
+- LangGraph는 optional import로만 확인하고, 미설치 환경에서는 `sequential_fallback` 실행 모드로 동작한다.
+- success output은 `decision`, `routing_input`, execution trace를 local JSON으로 저장한다.
+- report output은 `HistoryReport` schema 기반 count/status/decision과 execution trace를 저장한다.
+- malformed input 또는 provider failure는 safe failed output/report와 failed item을 생성한다.
+- 빈 history는 workflow에서 `new_topic`으로 처리해 provider 호출 없이 종료한다.
+- package CLI `src/history_manager_agent/scripts/run_history_manager.py`를 workflow 실행 진입점으로 확장했다.
+- CLI는 `--input`, `--output`, `--report-output`, `--provider`, `--fake-decision`, config 관련 인자를 처리한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_workflow_cli.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_workflow_cli.py`: 구현 전 import 실패 확인 후, 구현 후 10 passed.
+- `python3.11 -m pytest`: 65 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature7_fixture_and_safety_tests`: synthetic fixture와 end-to-end safety test를 보강하고 MVP 제외 범위를 테스트로 고정한다.
+
+## 2026-05-15 - History Manager Agent feature5_contextualized_question
+
+### 작업 목표
+
+- classification/context policy 결과를 바탕으로 Query Routing Agent가 검색에 사용할 `contextualized_question`을 생성한다.
+- History Manager canonical decision과 Query Routing Agent input payload를 생성하는 helper를 구현한다.
+- LangGraph workflow, CLI full orchestration, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/unit/test_contextualized_question.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `history_manager_agent.question` package 미구현으로 `ModuleNotFoundError` 실패를 확인했다.
+- 테스트 케이스에는 follow-up context 반영 재작성, new-topic 원문 유지, ambiguous 보수적 fallback, 빈 rewriter output fallback, 길이 초과 fallback, rewriter 실패 fallback/warning, Query Routing input 생성, History Decision schema 생성, full history 복제 방지, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/history-manager-agent/src/history_manager_agent/question` package를 추가했다.
+- `ContextualizedQuestionProvider` protocol과 `FakeQuestionRewriter`를 추가했다.
+- `ContextualizedQuestionRequest`와 `ContextualizedQuestionResult`를 구현했다.
+- `build_question_result()`는 `follow_up`에서 provider가 없으면 preserved context summary와 current question을 조합한 deterministic 독립 질문을 만든다.
+- `new_topic`은 current question 원문을 유지하고, `ambiguous`는 과도한 추론 없이 원문을 유지하며 conservative warning을 추가한다.
+- rewriter가 실패하거나 빈 문자열/길이 초과 후보를 반환하면 current question으로 fallback하고 warning을 남긴다.
+- `build_history_decision()`은 feature1의 `HistoryDecision` canonical schema를 생성한다.
+- `build_query_routing_input()`은 feature1의 `QueryRoutingInput` schema로 Query Routing Agent 입력 payload를 만든다.
+- routing metadata에서는 raw/full history 계열 key를 제외해 원본 history 전체가 output으로 복제되지 않도록 했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_contextualized_question.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_contextualized_question.py`: 구현 전 import 실패 확인 후, 구현 후 10 passed.
+- `python3.11 -m pytest`: 55 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature6_langgraph_workflow_and_cli`: 지금까지 구현한 loader/normalization/classification/context/question/routing helper를 workflow와 CLI 수동 실행 흐름으로 연결한다.
+
+## 2026-05-15 - History Manager Agent feature4_context_policy
+
+### 작업 목표
+
+- History classification 결과에 따라 context를 보존하거나 초기화하는 deterministic context policy를 구현한다.
+- `follow_up`, `new_topic`, `ambiguous` decision별 `preserved_context`, `reset_required`, warnings를 생성한다.
+- contextualized question 생성, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/unit/test_context_policy.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `history_manager_agent.context` package 미구현으로 `ModuleNotFoundError` 실패를 확인했다.
+- 테스트 케이스에는 follow-up reset false/context 보존, trimmed turn_refs, new-topic reset/minimized context, ambiguous minimal context/low confidence warning, full history 복제 방지, summary length guard, empty history safety, normalization warning propagation, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/history-manager-agent/src/history_manager_agent/context` package를 추가했다.
+- `ContextPolicyResult`와 `apply_context_policy()`를 구현했다.
+- `follow_up`은 feature2의 trimmed non-system history를 기반으로 summary, entities, turn_refs를 생성하고 `reset_required=false`를 반환한다.
+- `new_topic`은 previous context를 비우고 `reset_required=true`와 `context_reset` warning을 반환한다.
+- `ambiguous`는 최근 1-2개 turn만 보존하고 낮은 confidence일 때 `ambiguous_low_confidence` warning을 유지한다.
+- summary는 deterministic short summary로 제한하고, 원본 history 전체를 output에 복제하지 않도록 length guard와 truncation warning을 추가했다.
+- entity extraction은 MVP용 deterministic uppercase-token heuristic으로 구현했다.
+- normalization warning code는 policy result warnings로 전달한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_context_policy.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_context_policy.py`: 구현 전 import 실패 확인 후, 구현 후 9 passed.
+- `python3.11 -m pytest`: 45 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature5_contextualized_question`: decision별 contextualized question 생성과 Query Routing Agent input builder를 테스트 우선으로 구현한다.
+
+## 2026-05-15 - History Manager Agent feature3_llm_provider_and_classification
+
+### 작업 목표
+
+- History Manager Agent의 LLM provider interface, fake provider, OpenAI provider, classification service를 구현한다.
+- `follow_up`, `new_topic`, `ambiguous` label과 confidence/reason parsing을 schema validation으로 고정한다.
+- context policy, contextualized question, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/unit/test_llm_provider_classification.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `history_manager_agent.llm` package 미구현으로 `ModuleNotFoundError` 실패를 확인했다.
+- prompt trimming 테스트에서 feature2 normalized result를 잘못 구성한 테스트 경계를 확인하고, classification service가 이미 trimming된 normalized history를 소비하도록 테스트를 정리했다.
+- 테스트 케이스에는 fake provider의 3개 label 분류, confidence/label/schema validation, invalid JSON, prompt에 current question과 trimmed context 포함, raw history 과다 포함 방지, OpenAI provider 외부 key 주입, missing key configuration error, request config 반영, auth/timeout/5xx error 분류, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/history-manager-agent/src/history_manager_agent/llm` package를 추가했다.
+- `HistoryLLMProvider` protocol과 `HistoryClassificationRequest`, `LLMProviderResponse`를 정의했다.
+- `FakeHistoryLLMProvider`를 추가해 기본 테스트 suite가 실제 OpenAI 네트워크를 호출하지 않도록 했다.
+- `OpenAIHistoryLLMProvider`를 추가하고 API key를 config 또는 환경변수 mapping에서만 읽도록 했다.
+- OpenAI provider는 injected transport로 테스트 가능하며, 기본 transport는 Chat Completions JSON request를 구성한다.
+- provider repr/safe dict와 error message에는 API key, Authorization header, Bearer 값이 포함되지 않게 했다.
+- `build_classification_prompt()`, `parse_classification_response()`, `classify_history()`를 구현했다.
+- classification service는 feature2의 `to_llm_context_turns()` helper를 재사용해 system turn을 기본 판단 입력에서 제외한다.
+- OpenAI auth error는 non-retryable, timeout/5xx/429는 retryable safe error로 분류한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_llm_provider_classification.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_llm_provider_classification.py`: 구현 전 import 실패 확인 후, 구현 후 15 passed.
+- `python3.11 -m pytest`: 36 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature4_context_policy`: decision별 preserved context/reset policy/warnings 처리를 테스트 우선으로 구현한다.
+
+## 2026-05-15 - History Manager Agent feature2_history_input_normalization
+
+### 작업 목표
+
+- BFF가 전달한 conversation history JSON을 History Manager Agent 내부 schema에 맞게 로드, 정규화, 정렬, trimming한다.
+- malformed turn은 warning으로 기록하고 가능한 valid turn만 유지한다.
+- 실제 OpenAI API 호출, LLM classification, context policy, contextualized question, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/unit/test_history_input_normalization.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `history_manager_agent.history` package 미구현으로 `ModuleNotFoundError` 실패를 확인했다.
+- 추가로 system role 판단 입력 제한 helper 테스트를 먼저 추가했고, `NormalizedHistoryResult.to_llm_context_turns()` 미구현 실패를 확인했다.
+- 테스트 케이스에는 valid JSON loader, malformed JSON loader error, `current_question` validation, role validation, `created_at` sorting/fallback, empty history, malformed turn warning, 최근 N개 turn trimming, `max_context_chars` trimming, count/warning serialization, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/history-manager-agent/src/history_manager_agent/history/normalization.py`를 추가했다.
+- `load_history_input()`은 strict schema loader로 유지하고 malformed JSON을 명확한 `HistoryInputLoaderError`로 분류한다.
+- `load_and_normalize_history_input()`과 `normalize_history_input_payload()`는 top-level input contract를 검증하면서 malformed turn은 warning으로 처리한다.
+- `user`, `assistant`, `system` role을 허용하고 unknown role은 `invalid_role` warning 후 제외한다.
+- `created_at` 기준 deterministic sorting과 missing `created_at` fallback을 구현했다.
+- `history_window_turns`와 `max_context_chars` 기준 trimming을 구현했다.
+- `NormalizedHistoryResult.to_dict()`는 전체 raw input history를 복제하지 않고 normalized history와 counts/warnings만 반환한다.
+- `NormalizedHistoryResult.to_llm_context_turns()`는 system turn을 normalized history에는 보존하되 LLM 판단 입력에서는 기본 제외한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_history_input_normalization.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_history_input_normalization.py`: 구현 전 import 실패와 helper 미구현 실패를 확인 후, 구현 후 12 passed.
+- `python3.11 -m pytest`: 21 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature3_llm_provider_and_classification`: provider interface, OpenAI provider, fake provider, classification parsing/retry/safe error 처리를 테스트 우선으로 구현한다.
+
+## 2026-05-15 - History Manager Agent feature1_project_skeleton_and_schema
+
+### 작업 목표
+
+- History Manager Agent의 Python package 기본 구조와 schema/config 기반을 만든다.
+- `OPENAI_API_KEY`는 외부 주입 가능한 config field로만 정의하고, safe serialization과 CLI 출력에서 노출하지 않는다.
+- 실제 OpenAI API 호출, history normalization, LLM classification, context policy, contextualized question, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/history-manager-agent/tests/unit/test_schema_config.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, package 미구현으로 `ModuleNotFoundError: No module named 'history_manager_agent'` 실패를 확인했다.
+- 테스트 케이스에는 config 외부 입력과 key redaction, conversation turn role/schema, History Manager input, History Decision, Query Routing input 호환 schema, label enum 확장성, report schema, 필수값 validation, CLI skeleton input validation을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/history-manager-agent/pyproject.toml`을 추가했다.
+- `src/history_manager_agent` package 기본 구조를 추가했다.
+- `HistoryManagerConfig`를 추가하고 `history_window_turns`, `max_context_chars`, model, temperature, timeout, retry, optional `openai_api_key` 검증 및 safe serialization을 구현했다.
+- conversation turn, History Manager input, preserved context, History Decision, Query Routing input, warning, failed item, History Report schema를 추가했다.
+- `HistoryDecisionLabel`은 `follow_up`, `new_topic`, `ambiguous`를 지원하고 `from_value()`로 unknown-safe 확장 경로를 제공한다.
+- `scripts/run_history_manager.py`와 package CLI module은 config/input validation skeleton까지만 수행하고 OpenAI provider나 workflow는 실행하지 않는다.
+- `.env.example`은 placeholder 변수명만 포함하고 실제 key 값은 포함하지 않았다.
+- `tests/fixtures`, `data/input`, `data/output`, `data/reports`, `data/failed` placeholder 디렉토리를 추가했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_schema_config.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_schema_config.py`: 구현 전 `ModuleNotFoundError` 실패 확인 후, 구현 후 9 passed.
+- `python3.11 -m pytest`: 9 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature2_history_input_normalization`: input JSON loader, turn normalization, role validation, sorting, warning, trimming 테스트 우선 구현.
+
 ## 2026-05-15 - Data Sync Agent MVP 마감 문서 정리
 
 - `docs/ai/current-plan.md`에서 feature1-8과 전체 MVP 완료 기준이 모두 완료 상태임을 확인했다.

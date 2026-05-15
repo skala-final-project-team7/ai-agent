@@ -1,0 +1,28 @@
+{
+  "conversation_id": "conversation-synthetic-malformed",
+  "user_id": "user-synthetic",
+  "current_question": "유효한 turn만 처리해?",
+  "history": [
+    {
+      "turn_id": "turn-001",
+      "role": "user",
+      "content": "정상 synthetic turn",
+      "created_at": "2026-05-15T00:01:00Z"
+    },
+    {
+      "turn_id": "turn-002",
+      "role": "unsupported_role",
+      "content": "지원하지 않는 role",
+      "created_at": "2026-05-15T00:02:00Z"
+    },
+    {
+      "turn_id": "turn-003",
+      "role": "assistant",
+      "created_at": "2026-05-15T00:03:00Z"
+    }
+  ],
+  "metadata": {
+    "locale": "ko-KR",
+    "fixture": "malformed_history"
+  }
+}
