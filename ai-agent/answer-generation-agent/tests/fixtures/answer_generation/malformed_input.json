@@ -1,0 +1,18 @@
+{
+  "conversation_id": "conversation-malformed",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-malformed",
+    "intent": "unknown",
+    "task_prompt_type": "general",
+    "expanded_queries": [],
+    "metadata_filters": {},
+    "pool_weights": {},
+    "confidence": 0.4,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": []
+  },
+  "metadata": {"locale": "ko-KR"}
+}

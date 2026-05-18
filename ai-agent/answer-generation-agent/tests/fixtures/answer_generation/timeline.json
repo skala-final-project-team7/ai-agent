@@ -1,0 +1,33 @@
+{
+  "conversation_id": "conversation-timeline",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-timeline",
+    "original_question": "Synthetic incident rollback?",
+    "query": "synthetic incident rollback timeline",
+    "intent": "incident_response",
+    "task_prompt_type": "timeline",
+    "expanded_queries": ["synthetic incident rollback timeline"],
+    "metadata_filters": {"space_keys": ["OPS"]},
+    "pool_weights": {"title": 0.2, "content": 0.65, "label": 0.15},
+    "confidence": 0.84,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": [
+      {
+        "context_id": "ctx-timeline",
+        "document_id": "doc-timeline",
+        "chunk_id": "chunk-timeline",
+        "title": "Synthetic Incident Runbook",
+        "space_key": "OPS",
+        "source_url": "https://example.invalid/timeline",
+        "content": "The synthetic incident runbook says to identify the impact, roll back the changed configuration, then verify service health.",
+        "score": 0.74,
+        "rerank_score": 0.93,
+        "metadata": {"page_id": "page-timeline"}
+      }
+    ]
+  },
+  "metadata": {"locale": "ko-KR"}
+}

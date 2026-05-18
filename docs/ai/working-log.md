@@ -1,5 +1,423 @@
 # Working Log
 
+## 2026-05-18 - Answer Generation Agent feature8_fixture_and_safety_tests
+
+### 작업 목표
+
+- Answer Generation Agent MVP 전체를 synthetic fixture 기반으로 검증한다.
+- 민감정보 비노출, Answer Verification Agent 입력 호환성, sentence-level citation, source/report/failed output shape, MVP 제외 기능 boundary를 테스트로 고정한다.
+- 새로운 runtime 기능 확장은 하지 않고 feature1-7 구현을 검증/보강하는 범위로만 작업한다.
+
+### 테스트 우선 진행
+
+- synthetic fixture 디렉토리 `ai-agent/answer-generation-agent/tests/fixtures/answer_generation/`를 추가했다.
+- timeline, step_by_step, evidence_first, history_summary, general, insufficient_context, malformed_input, attachment_source fixture를 작성했다.
+- `ai-agent/answer-generation-agent/tests/integration/test_fixture_safety.py`를 먼저 작성했다.
+- 최초 실행에서 malformed input fixture가 `GenerationInputNormalizationError`를 직접 발생시켜 failed output/report/failed item을 생성하지 못하는 것을 확인했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/workflow.py`를 보강했다.
+- malformed/invalid input처럼 normalization이 불가능한 경우도 safe failed AnswerOutput, GenerationReport, FailedItem으로 기록하도록 처리했다.
+- failed artifact에는 synthetic input에서 가능한 `conversation_id`, `user_id`, `routing_id`만 보존하고, reason/error_type은 safe redaction된 `input_error`로 남긴다.
+- 실제 Qdrant 검색, embedding, Cross-Encoder reranking, Answer Verification 호출, SSE transport, BFF/DB/QCA/feedback/UI formatting은 실행하지 않고 `excluded_capabilities` marker로 검증한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_fixture_safety.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_fixture_safety.py`: 최초 1 failed 후 workflow safe failed artifact 보강, 최종 13 passed.
+- `python3.11 -m pytest`: 101 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### MVP 완료 여부
+
+- Answer Generation Agent MVP feature1-8이 모두 완료되었다.
+- 남은 항목은 MVP 제외 후속 확장이다: 실제 Qdrant/RAG adapter, Dense/Sparse embedding, Cross-Encoder reranking, Answer Verification Agent 호출 adapter, 실제 SSE transport, BFF/DB/QCA/feedback/UI response formatting, live evaluation/prompt regression.
+
+## 2026-05-18 - Answer Generation Agent feature7_langgraph_workflow_and_cli
+
+### 작업 목표
+
+- feature2-6에서 구현한 input normalization, prompt template builder, answer generation service, citation mapping, answer output builder를 workflow와 CLI 수동 실행 흐름으로 연결한다.
+- fake provider/injected provider 기반으로 workflow를 실행하고 local JSON output/report/failed 파일을 생성한다.
+- 실제 OpenAI live API 호출, Qdrant 검색, Dense/Sparse embedding, Cross-Encoder reranking, Answer Verification 직접 호출, 실제 SSE 전송, BFF/DB/QCA/feedback/UI formatting은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/integration/test_workflow_cli.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent.generation.workflow` 모듈이 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 workflow node 실행 순서, answer/report JSON 생성, timeline/step_by_step/evidence_first/history_summary fixture, insufficient context, provider failure safe output/failed item, CLI 실행, secret 비노출, LangGraph optional fallback, MVP 제외 기능 비실행 marker 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/workflow.py`를 추가했다.
+- `AnswerGenerationWorkflowState`, `AnswerGenerationWorkflowResult`, `AnswerGenerationWorkflow`를 구현했다.
+- sequential workflow는 `load_config -> load_input -> normalize_generation_input -> validate_top_contexts -> assess_context_sufficiency -> build_task_prompt -> generate_answer -> map_sentence_citations -> build_answer_output -> write_output -> write_report` 순서로 기존 service/helper를 호출한다.
+- LangGraph는 optional capability로 감지하고, MVP 실행은 명확한 sequential fallback으로 수행한다.
+- `FakeAnswerLLMProvider` 또는 주입 provider로 workflow를 실행할 수 있게 했다.
+- provider failure는 safe failed AnswerOutput, report, failed item JSON으로 처리한다.
+- workflow result에는 후속 feature8에서 검증할 수 있도록 output/report/failed path, executed nodes, engine, excluded capabilities를 남긴다.
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/scripts/run_answer_generation.py`를 workflow 실행 CLI로 확장했다.
+- CLI는 `--input`, `--output`, `--report-output`, `--failed-output`, `--provider`, `--model`, `--max-contexts`, `--max-answer-sentences`를 처리하고 safe summary만 출력한다.
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/__init__.py`에 feature7 workflow helper를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_workflow_cli.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_workflow_cli.py`: 최초 import 실패 확인 후 11 passed.
+- `python3.11 -m pytest`: 최초 1건 실패 후 CLI 호환 summary 문구를 조정했고, 최종 88 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature8_fixture_and_safety_tests`: synthetic fixture 기반 end-to-end/safety 검증과 MVP boundary test를 보강한다.
+
+## 2026-05-18 - Answer Generation Agent feature6_answer_output_builder
+
+### 작업 목표
+
+- feature1-5에서 생성한 normalized input, raw generation result, citation mapping result를 조립해 Answer Verification Agent가 소비 가능한 canonical `AnswerOutput`을 생성한다.
+- `GenerationReport`, safe `FailedItem`, local JSON writer를 구현한다.
+- LangGraph workflow, CLI full orchestration, 실제 OpenAI live API 호출, Qdrant/embedding/reranking, Answer Verification 직접 호출, SSE 전송, BFF/DB/QCA/feedback/UI formatting은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/unit/test_answer_output_builder.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent.generation.answer_output_builder` 모듈이 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 canonical AnswerOutput 필드, deterministic generation_id, success/insufficient/failed status 매핑, citation mapping 결과 보존, routing/model/confidence 보존, warnings/unsupported_gaps 병합, streaming interface-only chunk, report count, failed item safe shape, local JSON writer, output/report/failed 민감정보 비노출, sentence text/citations 분리 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/answer_output_builder.py`를 추가했다.
+- `build_generation_id()`, `build_answer_output()`, `build_failed_answer_output()`, `build_generation_report()`, `build_failed_item()`, `write_answer_outputs()`를 구현했다.
+- `AnswerOutput`은 success, insufficient_context, failed 상태를 canonical schema로 조립하고 routing metadata, model, confidence, unsupported_gaps, warnings를 보존한다.
+- sentence/source/used_context_ids는 feature5 `CitationMappingResult`를 그대로 사용해 Answer Verification Agent가 문장별 citation을 검증할 수 있게 했다.
+- MVP streaming은 `streaming_supported=false`로 유지하고, 후속 adapter가 answer text를 chunk로 분해할 수 있는 interface-only text chunk를 생성한다.
+- local writer는 `answer_output.json`, `generation_report.json`, `failed_items.json`을 생성하며 저장 디렉토리를 자동 생성한다.
+- output/report/failed serialization에서 API key, Authorization, token/secret-like marker를 redaction한다.
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/__init__.py`에 feature6 public helper를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_answer_output_builder.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_answer_output_builder.py`: 최초 import 실패 확인 후 12 passed.
+- `python3.11 -m pytest`: 77 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature7_langgraph_workflow_and_cli`: feature2-6 서비스를 LangGraph/sequential workflow와 CLI full orchestration으로 연결한다.
+- `feature8_fixture_and_safety_tests`: fixture 기반 end-to-end/safety 검증과 MVP 제외 기능 boundary test를 보강한다.
+
+## 2026-05-18 - Answer Generation Agent feature5_citation_mapping
+
+### 작업 목표
+
+- LLM raw answer와 Top context를 기반으로 sentence-level citation 후보를 검증/정규화한다.
+- Answer Verification Agent가 검증할 수 있도록 `GeneratedSentence`, `GeneratedSource`, `used_context_ids`, warning 구조를 생성한다.
+- 최종 AnswerOutput builder, LangGraph workflow, local output pipeline, 실제 OpenAI live API 호출, Qdrant/embedding/reranking, Answer Verification 직접 호출, SSE 전송은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/unit/test_citation_mapping.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent.generation.citation_mapping` 모듈이 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 raw answer 문장 분리, deterministic sentence_id, valid citation 보존, invalid citation 제거와 warning, 단일 context fallback citation, 다중 context missing citation warning, source metadata 보존, duplicate citation/source 제거, used_context_ids 계산, attachment filename 보존, empty answer safe handling, 민감정보 비노출, sentence text/citations 분리 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/citation_mapping.py`를 추가했다.
+- `CitationMappingResult`와 `map_citations()`를 구현했다.
+- raw sentence candidate가 있으면 candidate text를 우선 사용하고, 없으면 answer text를 문장 단위로 분리한다.
+- sentence id는 `s1`, `s2` 형식으로 deterministic하게 생성한다.
+- citation은 normalized Top context의 `context_id`만 허용하며, 존재하지 않는 citation은 warning 후 제거한다.
+- citation 후보가 없고 Top context가 하나뿐이면 fallback citation을 적용하고, 여러 context면 missing citation warning을 남긴다.
+- source list는 사용된 context 기준으로 생성하고 context/source metadata를 보존한다.
+- duplicate citation/source는 제거하고, `used_context_ids`는 sentence citation 순서 기준으로 계산한다.
+- sentence/source/warning/result serialization에서 API key, Authorization, token/secret-like marker를 redaction한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_citation_mapping.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_citation_mapping.py`: 최초 import 실패 확인 후 12 passed.
+- `python3.11 -m pytest`: 65 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature6_answer_output_builder`: Answer Verification Agent 입력 호환 output builder, report/helper, local JSON writer를 구현한다.
+- `feature7_langgraph_workflow_and_cli` 이후 항목은 후속 세션에서 feature 단위로 진행한다.
+
+## 2026-05-18 - Answer Generation Agent feature4_llm_provider_and_answer_generation
+
+### 작업 목표
+
+- Answer Generation Agent의 `AnswerLLMProvider` interface, fake provider, OpenAI provider adapter shell, answer generation request/result schema, context sufficiency handling, answer generation service를 구현한다.
+- 기본 테스트 suite는 fake provider와 injected fake transport만 사용하고 실제 OpenAI live API 호출은 수행하지 않는다.
+- feature4에서는 raw answer text와 sentence/citation 후보까지만 보존하며 최종 citation mapping, AnswerOutput 조립, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/unit/test_llm_provider_answer_generation.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent.generation.answer_generation` 모듈이 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 fake provider answer parsing, raw sentence/citation 후보 보존, empty context insufficient 처리, usable/weak context 처리, prompt 전달, model/fallback policy, invalid LLM response safe error, OpenAI provider API key 외부 주입, request 구성, auth/timeout/5xx error 분류, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/answer_generation.py`를 추가했다.
+- `AnswerLLMProvider` protocol, `FakeAnswerLLMProvider`, `OpenAIAnswerLLMProvider`, `AnswerGenerationService`를 구현했다.
+- `AnswerGenerationRequest`, `AnswerLLMResult`, `RawSentenceCandidate`, `AnswerGenerationResult`를 추가했다.
+- `parse_llm_response()`는 LLM output JSON/object를 검증하고 answer text, raw sentence/citation 후보, unsupported gaps를 파싱한다.
+- context가 없으면 provider를 호출하지 않고 `answer_status=insufficient_context` 결과와 warning을 반환한다.
+- context가 있으면 prompt builder 결과를 provider에 전달하고, weak lexical overlap context에는 `weak_context` warning을 추가한다.
+- simple model policy `select_generation_model()`은 config model 또는 fallback model을 선택한다.
+- OpenAI provider는 API key를 외부 주입 또는 `OPENAI_API_KEY` 환경변수에서만 읽고, 기본 테스트에서는 injectable transport만 사용한다.
+- OpenAI auth/configuration error는 non-retryable로, timeout/rate limit/5xx는 retryable safe error로 분류한다.
+- provider request/error/repr/safe serialization에서 API key, Authorization, token/secret-like marker를 redaction한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_llm_provider_answer_generation.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_llm_provider_answer_generation.py`: 최초 import 실패 확인 후 17 passed.
+- `python3.11 -m pytest`: 53 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature5_citation_mapping`: LLM output sentence parsing/citation 후보를 최종 `GeneratedSentence`와 source list로 매핑한다.
+- `feature6_answer_output_builder` 이후 항목은 후속 세션에서 feature 단위로 진행한다.
+
+## 2026-05-18 - Answer Generation Agent feature3_prompt_template_builder
+
+### 작업 목표
+
+- feature2 normalized generation input과 Top context를 LLM provider가 사용할 prompt payload로 조립한다.
+- `timeline`, `step_by_step`, `evidence_first`, `history_summary`, `general` task prompt type별 답변 지시를 구현한다.
+- 공통 context-only rule, sentence-level citation instruction, Answer Verification Agent 검증 가능한 JSON/schema 출력 지시, Top context formatting, prompt length guard를 구현한다.
+- 실제 OpenAI API 호출, answer generation service, citation mapping, answer output builder, LangGraph workflow, local output pipeline, Qdrant/embedding/reranking, Answer Verification 호출, SSE 전송은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/unit/test_prompt_template_builder.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent.generation.prompt_template` 모듈이 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 task prompt type별 지시문, unsupported task prompt fallback, context 밖 사실 단정 금지, context가 있으면 근거 있는 범위에서 최대한 답변하는 원칙, sentence-level citation instruction, Answer Verification JSON/schema 출력 지시, Top context metadata formatting, empty context prompt, Top-5 제한 유지, context truncation, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/prompt_template.py`를 추가했다.
+- `PromptPayload`와 `build_prompt_payload()`를 구현했다.
+- 공통 system prompt에는 제공된 context 밖 사실 단정 금지, context 기반 답변, 근거 부족 시 제한 사항 표시, sentence-level citation과 context_id 참조 규칙을 포함했다.
+- task prompt type별 developer prompt는 장애 대응 timeline, 운영 가이드 step-by-step, 정책·절차 evidence-first, 이력 조회 history-summary, 일반 답변 general 지시를 포함한다.
+- Answer Verification Agent가 검증 가능한 JSON/schema output instruction을 포함했다.
+- Top context는 `context_id`, `title`, `space_key`, `source_url`, `score`, `rerank_score`, `content` 중심으로 포맷팅한다.
+- unsupported task prompt type은 `general`로 fallback하고 warning을 남긴다.
+- prompt length guard는 context content를 제한하고 `context_truncated` warning을 남긴다.
+- prompt payload serialization에서 API key, Authorization, token/secret-like marker를 redaction한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_prompt_template_builder.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_prompt_template_builder.py`: 최초 import 실패 확인 후 13 passed.
+- `python3.11 -m pytest`: 36 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature4_llm_provider_and_answer_generation`: provider interface, fake/OpenAI provider, answer generation request/result, context sufficiency handling을 구현한다.
+- `feature5_citation_mapping` 이후 항목은 후속 세션에서 feature 단위로 진행한다.
+
+## 2026-05-18 - Answer Generation Agent feature2_generation_input_normalization
+
+### 작업 목표
+
+- Query Routing Agent output과 Top-5 context를 포함한 generation input JSON을 로드, 검증, 정규화한다.
+- top context 5개 제한, rerank/score/input order 기반 정렬, empty content 제외, duplicate context 처리, unsupported task prompt fallback을 구현한다.
+- 실제 OpenAI API 호출, prompt template builder, answer generation, citation mapping, workflow, local output pipeline, Qdrant/embedding/reranking, Answer Verification 호출, SSE 전송은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/unit/test_generation_input_normalization.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent.generation` package가 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 valid JSON load, malformed JSON error, 필수값 validation, supported/unsupported task prompt type, top context 5개 제한, rerank/score 정렬, empty content 제외, duplicate context 처리, insufficient context 후보 상태, source metadata 보존, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/src/answer_generation_agent/generation/input_normalization.py`를 추가했다.
+- `load_generation_input_json()`은 JSON 파일을 object payload로 로드하고 malformed JSON을 safe `GenerationInputLoadError`로 분류한다.
+- `normalize_generation_input()`은 필수 generation/routing/search field를 검증하고 `GenerationInput` 내부 schema로 변환한다.
+- unsupported `task_prompt_type`은 `general`로 fallback하고 warning을 남긴다.
+- top context는 `rerank_score`, `score`, 입력 순서 기준으로 deterministic하게 정렬한 뒤 최대 5개만 유지한다.
+- content가 비어 있는 context와 duplicate `context_id`는 warning 후 제외한다.
+- context가 하나도 남지 않으면 이후 단계에서 `insufficient_context`로 처리할 수 있도록 `insufficient_context_candidate=true`를 남긴다.
+- metadata와 warning/result serialization에서 API key, Authorization, token/secret-like marker를 노출하지 않도록 sanitization을 적용했다.
+- CLI skeleton은 feature2 normalization service를 사용해 input validation과 normalization만 수행하도록 갱신했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_generation_input_normalization.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_generation_input_normalization.py`: 최초 import 실패 확인 후 14 passed.
+- `python3.11 -m pytest`: 23 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature3_prompt_template_builder`: task prompt type별 prompt template과 context-only answer/citation instruction을 구현한다.
+- `feature4_llm_provider_and_answer_generation` 이후 항목은 후속 세션에서 feature 단위로 진행한다.
+
+## 2026-05-18 - Answer Generation Agent feature1_project_skeleton_and_schema
+
+### 작업 목표
+
+- Answer Generation Agent의 기본 Python package 골격과 schema/config 기반을 만든다.
+- Query Routing Agent output과 Top-5 context 입력, Answer Verification Agent가 소비할 sentence-level citation 기반 output 방향을 schema로 준비한다.
+- 실제 OpenAI API 호출, Qdrant 검색, embedding, reranking, Answer Verification 호출, SSE 전송, BFF/DB/QCA/feedback/UI formatting은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-generation-agent/tests/unit/test_schema_config.py`를 먼저 작성했다.
+- 최초 실행에서 `answer_generation_agent` package가 없어 `ModuleNotFoundError`가 발생하는 것을 확인했다.
+- 테스트 케이스에는 config 외부 주입과 secret redaction, generation/routing/context/sentence/source/output/stream/report/failed schema, enum, 필수값 validation, CLI skeleton validation을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-generation-agent/pyproject.toml`과 `src/answer_generation_agent` package skeleton을 추가했다.
+- `AnswerGenerationConfig`를 추가하고 `OPENAI_API_KEY`는 외부 주입 가능한 값으로만 보관하며 safe dict/repr에 노출되지 않게 했다.
+- generation input, routing decision input, top context, generated sentence/source, answer output, stream chunk, generation report, failed/warning schema를 추가했다.
+- `scripts/run_answer_generation.py` CLI skeleton을 추가해 실제 OpenAI 호출이나 검색 없이 config/input validation만 수행하게 했다.
+- fixture/data input/output/reports/failed 기본 디렉토리를 `.gitkeep`으로 준비했다.
+- 실제 `.env` 파일은 만들지 않았고, 값 없는 `.env.example`만 추가했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_schema_config.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_schema_config.py`: 최초 import 실패 확인 후 9 passed.
+- `python3.11 -m pytest`: 9 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature2_generation_input_normalization`: Query Routing output + Top-5 context JSON loader와 normalization을 구현한다.
+- `feature3_prompt_template_builder` 이후 항목은 후속 세션에서 feature 단위로 진행한다.
+
 ## 2026-05-15 - Query Routing Agent MVP 마감 정리
 
 - `docs/ai/current-plan.md`에서 Query Routing Agent feature1-8과 전체 MVP 완료 기준이 모두 완료 체크되어 있음을 확인했다.
