@@ -1,5 +1,233 @@
 # Working Log
 
+## 2026-05-15 - Query Routing Agent MVP 마감 정리
+
+- `docs/ai/current-plan.md`에서 Query Routing Agent feature1-8과 전체 MVP 완료 기준이 모두 완료 체크되어 있음을 확인했다.
+- `docs/ai/current-plan.md`에 남은 미체크 `[ ]` 항목이 없음을 확인했다.
+- `ai-agent/query-routing-agent` 내부 `.pytest_cache`, `__pycache__`, `*.pyc` 캐시를 삭제했다.
+- 실제 OpenAI live API 호출은 수행하지 않았다.
+- 실제 Qdrant 검색, embedding 생성, Cross-Encoder reranking, ACL enforcement, Answer Generation/Verification, BFF/DB/SSE 연동은 MVP 제외 후속 확장 범위로 유지한다.
+
+검증 결과:
+
+- `python3.11 -m pytest`: 102 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공.
+- `./scripts/verify.sh`: 성공.
+
+## 2026-05-15 - Query Routing Agent feature8_fixture_and_safety_tests
+
+### 작업 목표
+
+- Query Routing Agent MVP 전체를 synthetic fixture 기반으로 검증한다.
+- routing decision/search request/report/failed output shape, intent별 mapping, ACL filter 전달, pool weight, safety redaction, MVP 제외 기능 boundary를 테스트로 고정한다.
+- 실제 OpenAI live API 호출, Qdrant 검색, embedding 생성, Cross-Encoder reranking, ACL enforcement, Answer Generation/Verification, BFF/DB/SSE는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/integration/test_fixture_safety.py`를 먼저 작성했다.
+- 최초 실행에서 synthetic fixture 부재로 실패를 확인했다.
+- 테스트 케이스에는 incident/operations/policy/history/unknown fixture full workflow, history date/label filter, ACL payload 전달과 enforcement 미수행, malformed input, provider failure, CLI safety, MVP 제외 기능 미실행 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/tests/fixtures/query_routing/`에 synthetic fixture를 추가했다.
+  - `incident_response.json`
+  - `operations_guide.json`
+  - `policy_procedure.json`
+  - `history_lookup.json`
+  - `unknown_intent.json`
+  - `acl_metadata.json`
+  - `provider_failure.json`
+  - `malformed_input.json`
+- feature8 safety test 중 unknown intent fallback에서 query rewrite padding이 중복 query 때문에 종료되지 않는 경계 버그를 발견했다.
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/query_rewrite.py`에서 fallback padding query가 항상 unique하게 추가되도록 최소 보강했다.
+- 테스트 fixture와 출력물에는 실제 token, API key, secret, credential을 넣지 않았다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_fixture_safety.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_fixture_safety.py`: 최초 fixture 부재 실패 확인 후 10 passed.
+- `python3.11 -m pytest`: 102 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- Query Routing Agent MVP feature1-8 구현과 fixture/safety 검증을 완료했다.
+- 남은 범위는 실제 Qdrant search adapter, embedding, Cross-Encoder reranking, ACL enforcement, Answer Generation/Verification 연동, BFF/DB/SSE 연동, production prompt tuning과 live evaluation regression 등 MVP 제외 후속 확장이다.
+
+## 2026-05-15 - Query Routing Agent feature7_langgraph_workflow_and_cli
+
+### 작업 목표
+
+- Query Routing Agent feature1-6 산출물인 routing input normalization, intent classification, query rewrite, filter/weight builder, routing decision/search request builder를 workflow와 CLI 수동 실행 흐름으로 연결한다.
+- LangGraph optional wrapper와 sequential fallback을 제공하되, node는 orchestration에 집중하고 기존 service/helper를 재사용한다.
+- 실제 Qdrant 검색, embedding 생성, Cross-Encoder reranking, ACL enforcement, Answer Generation/Verification, BFF/DB/SSE는 구현하지 않고 search request payload 생성까지만 유지한다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/integration/test_workflow_cli.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `query_routing_agent.workflow` 미구현으로 import 실패를 확인했다.
+- 테스트 케이스에는 fake provider 기반 node 순서 실행, routing decision/report/search request 파일 생성, intent별 task prompt mapping, provider failure safe failed output, malformed input safe failed output, CLI 실행, LangGraph optional fallback, Qdrant/embedding/reranking 미실행 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/src/query_routing_agent/workflow.py`를 추가했다.
+- `QueryRoutingWorkflowState`, `QueryRoutingWorkflowResult`, `QueryRoutingWorkflowRunner`, `build_query_routing_workflow()`, `run_query_routing_workflow()`를 구현했다.
+- workflow는 `load_config -> load_input -> normalize_routing_input -> classify_intent_and_rewrite -> build_metadata_filters -> build_pool_weights -> build_task_prompt_type -> build_routing_decision -> build_search_request -> write_output -> write_report` 순서로 실행된다.
+- LangGraph 설치 여부를 확인해 `execution_mode`를 `langgraph` 또는 `sequential`로 명시하고, 미설치 환경에서는 sequential fallback으로 실행된다.
+- provider failure 또는 malformed input은 safe failed item/report 파일로 기록하고 decision output은 생성하지 않는다.
+- `write_routing_outputs()`는 기존 디렉토리 기반 파일명 방식에 더해 CLI `--output` 경로를 decision 파일로 사용할 수 있도록 명시 경로 옵션을 지원한다.
+- `scripts/run_query_router.py`를 실제 workflow CLI 진입점으로 확장했다.
+- CLI는 `--input`, `--output`, `--report-output`, `--failed-output`, `--provider`, `--model`, `--default-query-count`, `--max-query-count` 등을 처리하며 기본 provider는 fake로 두어 live OpenAI 호출을 opt-in으로 유지한다.
+- CLI wrapper는 직접 실행 시 `src` package 경로를 안전하게 찾도록 조정했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_workflow_cli.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_workflow_cli.py`: 최초 import 실패 확인 후 10 passed.
+- `python3.11 -m pytest`: 92 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature8_fixture_and_safety_tests`: synthetic fixture 기반 end-to-end style safety 검증, output shape, 민감정보 비노출, MVP 제외 기능 boundary를 고정한다.
+
+## 2026-05-15 - Query Routing Agent feature2_routing_input_normalization
+
+### 작업 목표
+
+- History Manager Agent output JSON을 Query Routing Agent 내부 routing input schema에 맞게 로드, 검증, 정규화한다.
+- optional `preserved_context`/`metadata` 문제는 warning과 safe fallback으로 처리하고, job 자체가 불가능한 필수값 누락이나 malformed JSON은 명확한 오류로 처리한다.
+- 실제 OpenAI API 호출, intent classification, query rewrite, filter/weight builder, routing decision builder, LangGraph workflow, Qdrant 검색, embedding, reranking, ACL enforcement는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/unit/test_routing_input_normalization.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `query_routing_agent.routing` normalization API 미구현으로 import 실패를 확인했다.
+- 테스트 케이스에는 valid JSON load, malformed JSON error, 필수값 validation, supported/unsupported `history_decision`, empty/malformed `preserved_context`, `groups`/`space_keys` canonical list 정규화, ACL 전달값 준비, raw history 제거, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `src/query_routing_agent/routing/normalization.py`와 package export를 추가했다.
+- `load_history_manager_output()`은 JSON 파일을 읽고 malformed JSON 또는 object가 아닌 payload를 `RoutingInputLoadError`로 분류한다.
+- `normalize_routing_input()`은 `conversation_id`, `user_id`, `original_question`, `query` 필수값을 검증하고 `QueryRoutingInput`으로 변환한다.
+- unsupported `history_decision`은 `ambiguous`로 safe fallback하고 warning을 남긴다.
+- `preserved_context`의 optional field는 안전하게 기본값/list로 정규화하고, 잘못된 타입은 warning으로 기록한다.
+- metadata의 `groups`, `space_keys`는 문자열/배열/누락 케이스를 canonical list로 정규화한다.
+- ACL filter 전달용 `AclFilter(user_id, groups)`를 normalization result에 포함하되 권한 판정 결과는 만들지 않는다.
+- 입력에 포함된 raw/full history 계열 필드와 민감 metadata key는 normalized output에서 제거하고 safe warning만 남긴다.
+- CLI skeleton은 feature2 loader/normalizer를 사용해 input validation을 수행하도록 갱신했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_routing_input_normalization.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_routing_input_normalization.py`: 구현 전 import 실패 확인 후, 구현 후 20 passed.
+- `python3.11 -m pytest`: 29 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature3_intent_classification_provider`: LLM provider interface, fake/OpenAI provider, routing prompt, intent classification parsing과 safe fallback을 테스트 우선으로 구현한다.
+
+## 2026-05-15 - Query Routing Agent feature1_project_skeleton_and_schema
+
+### 작업 목표
+
+- Query Routing Agent의 기본 Python package 골격과 config/schema 기반을 만든다.
+- History Manager Agent output과 RAG search request/Answer Generation task prompt 방향을 고려한 canonical schema를 정의한다.
+- 실제 OpenAI API 호출, Qdrant 검색, embedding 생성, Cross-Encoder reranking, ACL enforcement, 다른 Agent 구현은 하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/unit/test_schema_config.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `query_routing_agent` package 미구현으로 `ModuleNotFoundError` 실패를 확인했다.
+- 테스트 케이스에는 config 외부 주입 및 redaction, routing input schema, intent/task prompt enum, metadata/ACL filter, pool weight 합계 정책, routing decision/search request payload, report/failed item, 필수값 validation, CLI skeleton validation을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/pyproject.toml`을 추가해 Python package와 pytest 설정을 정의했다.
+- `src/query_routing_agent` package 골격과 `config`, `schemas`, `app`, `scripts` 하위 모듈을 추가했다.
+- `QueryRoutingConfig`는 model, temperature, timeout, retry, query count, top-k, pool weight, `openai_api_key` 외부 주입 field를 제공하고 safe serialization에서 key를 redaction한다.
+- routing input, routing decision, metadata filter, ACL filter payload, pool weight, search request payload, routing report, warning, failed item schema를 dataclass/enum 기반으로 정의했다.
+- ACL filter는 `user_id`, `groups` 전달만 표현하고 권한 판정 결과는 포함하지 않는다.
+- CLI skeleton은 input JSON과 config validation만 수행하며 OpenAI 호출, Qdrant 검색, workflow 실행은 하지 않는다.
+- `.env.example`은 placeholder key 이름만 포함하고 실제 key 값은 포함하지 않았다.
+- fixture/data input/output/reports/failed 기본 디렉토리를 `.gitkeep`으로 추가했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_schema_config.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_schema_config.py`: 구현 전 import 실패 확인 후, 구현 후 9 passed.
+- `python3.11 -m pytest`: 9 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 출력상 루트 스크립트는 agent 하위 pytest 상세를 표시하지 않으므로 agent 디렉토리에서 `python3.11 -m pytest`를 별도로 실행했다.
+- `./scripts/verify.sh`: 성공.
+
+### 남은 작업
+
+- `feature2_routing_input_normalization`: History Manager output loader, malformed input 처리, preserved_context/metadata 정규화, unsupported history_decision warning 처리를 테스트 우선으로 구현한다.
+
 ## 2026-05-15 - History Manager Agent MVP 마감 정리
 
 - `docs/ai/current-plan.md`에서 feature1-7, 전체 MVP 완료 기준, OpenAI live smoke test opt-in 원칙, 수정/미수정 영역 표현을 마감 상태로 정리했다.
@@ -1094,3 +1322,213 @@ python3.11 -m compileall src scripts
 
 - Data Ingestion Agent MVP feature1-6 구현 및 fixture/safety 검증을 완료했다.
 - 남은 범위는 MVP 제외 항목 또는 후속 확장 항목이다.
+
+## 2026-05-15 - Query Routing Agent feature3_intent_classification_provider
+
+### 작업 목표
+
+- Query Routing Agent의 intent classification provider 계층을 구현한다.
+- `RoutingLLMProvider` interface, fake provider, OpenAI provider adapter, routing prompt builder, LLM output validation/classification service를 추가한다.
+- 기본 테스트는 fake provider와 injected transport만 사용하고 실제 OpenAI live API 호출은 수행하지 않는다.
+- query rewrite, metadata filter builder, pool weight builder, routing decision builder, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/unit/test_intent_classification_provider.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `query_routing_agent.llm` 모듈 import 실패를 확인했다.
+- 테스트 케이스에는 supported intent 분류, invalid intent의 `unknown` fallback, confidence validation, invalid JSON/schema mismatch safe error, prompt context 제한, OpenAI provider 외부 key 주입, config 반영, auth/non-retryable error, timeout/5xx retryable error, 민감정보 비노출을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/src/query_routing_agent/llm/providers.py`를 추가/보강했다.
+- `RoutingLLMProvider`, `FakeRoutingLLMProvider`, `OpenAIRoutingLLMProvider`, `RoutingClassificationRequest`, provider safe error 타입을 구현했다.
+- OpenAI provider는 config 또는 environment mapping으로만 API key를 주입받고, `repr`, `to_safe_dict`, error message에 key/Authorization marker를 노출하지 않도록 했다.
+- `ai-agent/query-routing-agent/src/query_routing_agent/llm/classification.py`를 추가/보강했다.
+- routing prompt builder, intent classification result, LLM JSON parsing, confidence/reason validation, invalid intent `unknown` fallback, future hint 보존 구조를 구현했다.
+- `ai-agent/query-routing-agent/src/query_routing_agent/llm/__init__.py`에서 feature3 public API를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_intent_classification_provider.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_intent_classification_provider.py`: 최초 import 실패 확인 후 18 passed.
+- `python3.11 -m pytest`: 47 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature4_query_rewrite`: expanded query parsing, query count/length/dedup 정책, preserved context 기반 enrichment.
+- `feature5_filter_and_pool_weight_builder` 이후 항목은 후속 세션에서 진행한다.
+
+## 2026-05-15 - Query Routing Agent feature4_query_rewrite
+
+### 작업 목표
+
+- Query Routing Agent가 검색에 사용할 expanded query 목록을 생성, 검증, 정규화한다.
+- LLM/fake provider output의 `expanded_queries` hint를 사용하되, 없거나 invalid하면 deterministic fallback을 적용한다.
+- 기본 3개, 최대 5개, 중복/빈 query 제거, preserved context 기반 enrichment, intent별 rewrite hint, 긴 query 제한, 민감정보 비노출을 보장한다.
+- metadata filter builder, pool weight builder, routing decision builder, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/unit/test_query_rewrite.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `query_routing_agent.routing.rewrite_queries` 미구현으로 import 실패를 확인했다.
+- 테스트 케이스에는 LLM expanded query 정규화, 기본 3개 생성, 최대 5개 trim, 중복/빈 값 제거, 전부 invalid 시 원본 fallback, preserved context enrichment, intent별 hint, 긴 query warning, raw history 및 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/query_rewrite.py`를 추가했다.
+- `QueryRewriteResult`와 `rewrite_queries()`를 구현했다.
+- classification result의 `raw_hints.expanded_queries`를 정규화하고, LLM hint가 없거나 정규화 후 비어 있으면 deterministic fallback을 생성한다.
+- fallback은 원본 query를 첫 번째 query로 유지하고 preserved context entity를 제한적으로 보강한다.
+- intent별로 `incident_response`, `operations_guide`, `policy_procedure`, `history_lookup`, `unknown`에 맞는 검색 hint를 추가한다.
+- query는 whitespace 정규화, 중복 제거, 최대 길이 제한, 민감 marker 제거를 거친다.
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/__init__.py`에서 feature4 public API를 export했다.
+- feature1-3 공개 API는 불필요하게 변경하지 않았다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_query_rewrite.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_query_rewrite.py`: 최초 import 실패 확인 후 8 passed.
+- `python3.11 -m pytest`: 55 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature5_filter_and_pool_weight_builder`: metadata/ACL filter builder, task prompt type mapping, intent별 pool weight 및 weight normalization.
+- `feature6_routing_decision_builder` 이후 항목은 후속 세션에서 진행한다.
+
+## 2026-05-15 - Query Routing Agent feature5_filter_and_pool_weight_builder
+
+### 작업 목표
+
+- Query Routing Agent가 intent와 routing input metadata를 기반으로 canonical metadata filter, ACL filter payload, Answer Generation용 task prompt type, Multi-Pool weight를 생성한다.
+- ACL은 `user_id`, `groups`를 filter payload로 전달하는 수준으로만 처리하고 권한 판정/enforcement는 수행하지 않는다.
+- routing decision builder, search request payload builder, LangGraph workflow, local output pipeline은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/unit/test_filter_and_pool_weight_builder.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `build_filter_and_pool_weights` 미구현으로 import 실패를 확인했다.
+- 테스트 케이스에는 metadata `space_keys`/labels/document_types/source_types/date_range/attachment_required 매핑, ACL user/groups 전달, missing ACL groups warning, invalid metadata safe fallback, intent별 task prompt type, intent별 pool weight, weight normalization/default fallback, 민감정보 비노출 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/filter_builder.py`를 추가했다.
+- `FilterAndWeightResult`, `build_filter_and_pool_weights()`, `build_metadata_filter()`, `map_task_prompt_type()`, `build_pool_weights()`, `normalize_pool_weights()`를 구현했다.
+- metadata filter는 `MetadataFilter`, `DateRangeFilter`, `AclFilter` canonical schema를 재사용한다.
+- ACL payload는 `user_id`, `groups`만 포함하고 `allowed`/`denied` 같은 enforcement 결과를 만들지 않는다.
+- intent별 task prompt type mapping은 `incident_response -> timeline`, `operations_guide -> step_by_step`, `policy_procedure -> evidence_first`, `history_lookup -> history_summary`, `unknown -> general`로 구현했다.
+- intent별 pool weight는 명세의 title/content/label 비율을 적용하고, raw weight는 합계 1.0으로 normalize한다.
+- 음수, all-zero, invalid weight는 default weight로 fallback하고 warning을 남긴다.
+- metadata/filter/weight 결과와 warning에서 API key, Authorization, secret-like marker를 제거한다.
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/__init__.py`에서 feature5 public API를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_filter_and_pool_weight_builder.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_filter_and_pool_weight_builder.py`: 최초 import 실패 확인 후 18 passed.
+- `python3.11 -m pytest`: 73 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature6_routing_decision_builder`: normalized input, classification, rewritten queries, filters, weights를 routing decision/search request payload로 조립한다.
+- `feature7_langgraph_workflow_and_cli` 이후 항목은 후속 세션에서 진행한다.
+
+## 2026-05-15 - Query Routing Agent feature6_routing_decision_builder
+
+### 작업 목표
+
+- feature1-5 산출물인 normalized input, intent classification, expanded queries, metadata filters, task prompt type, pool weights를 조립해 canonical `RoutingDecision`과 `SearchRequestPayload`를 생성한다.
+- routing report, failed item helper, local JSON writer를 구현한다.
+- 실제 Qdrant 검색, embedding 생성, Cross-Encoder reranking, LangGraph workflow, CLI full orchestration은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/query-routing-agent/tests/unit/test_routing_decision_builder.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `build_routing_decision` 미구현으로 import 실패를 확인했다.
+- 테스트 케이스에는 canonical routing decision 필드, deterministic routing_id, warning 병합, search request payload, ACL filter 전달, Answer Generation 준비 필드 validation, report count, failed item shape, local JSON writer, output redaction 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/decision_builder.py`를 추가했다.
+- `build_routing_id()`는 conversation/user/query 기반 deterministic routing id를 생성한다.
+- `build_routing_decision()`은 normalized input, classification, query rewrite result, filter/weight result를 `RoutingDecision` schema로 조립한다.
+- `build_search_request_payload()`는 `RoutingDecision`에서 RAG search request payload만 생성하며 실제 검색 실행 정보는 포함하지 않는다.
+- `build_routing_report()`는 status, intent, expanded query count, warning count를 계산한다.
+- `make_failed_item()`은 safe failed item schema를 생성한다.
+- `write_routing_outputs()`는 `routing_decision.json`, `search_request.json`, `routing_report.json`, `failed_items.json`을 생성하고 저장 디렉토리를 자동 생성한다.
+- local writer는 API key, Authorization, token, secret-like marker를 파일 출력에서 redaction한다.
+- `ai-agent/query-routing-agent/src/query_routing_agent/routing/__init__.py`에서 feature6 public API를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_routing_decision_builder.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_routing_decision_builder.py`: 최초 import 실패 확인 후 9 passed.
+- `python3.11 -m pytest`: 82 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature7_langgraph_workflow_and_cli`: feature1-6 service/helper를 LangGraph workflow와 CLI 수동 실행 흐름으로 연결한다.
+- `feature8_fixture_and_safety_tests`: fixture 기반 end-to-end style safety 검증을 보강한다.

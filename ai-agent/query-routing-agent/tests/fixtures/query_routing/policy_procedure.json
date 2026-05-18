@@ -1,0 +1,21 @@
+{
+  "conversation_id": "conversation-policy-synthetic",
+  "user_id": "user-policy-synthetic",
+  "original_question": "권한 변경 승인 기준은?",
+  "query": "IAM 권한 변경 승인 정책과 절차",
+  "history_decision": "new_topic",
+  "preserved_context": {
+    "summary": "Access control policy discussion",
+    "entities": ["IAM", "approval"],
+    "turn_refs": ["turn-policy-1"]
+  },
+  "reset_required": true,
+  "metadata": {
+    "locale": "ko-KR",
+    "space_keys": ["POLICY"],
+    "groups": ["security-review"],
+    "labels": ["policy", "procedure"],
+    "document_types": ["policy"],
+    "source_types": ["confluence"]
+  }
+}

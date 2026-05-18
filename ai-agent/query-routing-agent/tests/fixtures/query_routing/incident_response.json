@@ -1,0 +1,21 @@
+{
+  "conversation_id": "conversation-incident-synthetic",
+  "user_id": "user-incident-synthetic",
+  "original_question": "그럼 롤백은?",
+  "query": "IAM 정책 수정 장애 상황에서 롤백 절차는?",
+  "history_decision": "follow_up",
+  "preserved_context": {
+    "summary": "IAM policy change incident context",
+    "entities": ["IAM", "rollback", "policy change"],
+    "turn_refs": ["turn-incident-1"]
+  },
+  "reset_required": false,
+  "metadata": {
+    "locale": "ko-KR",
+    "space_keys": ["OPS"],
+    "groups": ["ops-team"],
+    "labels": ["incident"],
+    "document_types": ["runbook"],
+    "source_types": ["confluence"]
+  }
+}
