@@ -1,405 +1,572 @@
-# Answer Generation Agent MVP 개발 계획
+# Answer Verification Agent MVP Plan
 
 ## 0. 기존 계획 교체 확인
 
-- [x] 기존 `docs/ai/current-plan.md`가 Query Routing Agent 계획임을 확인했다.
-- [x] `docs/ai/working-log.md`에 Query Routing Agent feature1-8 완료 및 MVP 마감 기록이 있음을 확인했다.
-- [x] 이번 작업을 위해 `docs/ai/current-plan.md`를 Answer Generation Agent 전용 계획으로 교체한다.
-- [x] Query Routing Agent 계획과 Answer Generation Agent 계획을 한 파일에 섞지 않는다.
-- [x] 이번 세션에서는 구현 코드를 작성하지 않는다.
+- [x] 기존 `docs/ai/current-plan.md`가 Answer Generation Agent 계획임을 확인했다.
+- [x] `docs/ai/working-log.md`에 Answer Generation Agent feature1-8 완료 및 MVP 완료 기록이 있음을 확인했다.
+- [x] 이번 작업을 위해 `docs/ai/current-plan.md`를 Answer Verification Agent 전용 계획으로 교체한다.
+- [x] Answer Generation Agent 계획과 Answer Verification Agent 계획을 한 파일에 섞지 않는다.
+- [x] 이번 세션에서는 구현 코드, 테스트 코드, 스크립트, 패키지 파일, `.env.example`을 생성하거나 수정하지 않는다.
 
-## 1. 작업 범위 확인
-
-- [x] 프로젝트 root: `/Users/younghoonlee/workspace_prj/ai-agent-templates`
-- [x] 담당 영역: `ai-agent/answer-generation-agent`
-- [x] 목표: Answer Generation Agent MVP 개발 계획 수립 및 본 파일 저장
-- [x] API/DB 계약 변경 없음
-- [x] Secret, token, API key, `.env` 생성 또는 하드코딩 금지
-- [x] `OPENAI_API_KEY`는 외부 주입 방식으로만 사용한다.
-- [x] 실제 Qdrant 검색, embedding 생성, Cross-Encoder reranking, Answer Verification 호출, 실제 SSE streaming은 구현하지 않고 input/output schema 또는 interface까지만 다룬다.
-
-## 2. 확인한 문서
+## 1. 확인한 문서
 
 - [x] `AGENTS.md`
-- [x] `docs/architecture.md`
-- [x] `docs/conventions.md`
 - [x] `docs/ai/workflow.md`
 - [x] `docs/ai/prompt-templates.md`
+- [x] `docs/conventions.md`
+- [x] `docs/architecture.md`
 - [x] `ai-agent/AGENTS.md`
-- [x] `ai-agent/answer-generation-agent/answer-generation-agent.md`
+- [x] `ai-agent/answer-verification-agent/answer-verification-agent.md`
 - [x] `docs/ai/current-plan.md`
 - [x] `docs/ai/working-log.md`
 
-## 3. 요구사항 요약
+## 2. 공통 규칙 및 전용 요구사항 요약
 
-- [x] Answer Generation Agent는 Query Routing Agent 다음 단계에서 routing decision과 RAG Pipeline이 선별한 Top-5 context를 입력으로 받는다.
-- [x] `routing_decision`과 `top_contexts`를 검증, 정규화하고 context 5개 제한을 적용한다.
-- [x] task prompt type은 `timeline`, `step_by_step`, `evidence_first`, `history_summary`, `general`을 지원한다.
-- [x] task prompt type별 prompt template을 조립하고 context-only answer rule과 citation instruction을 포함한다.
-- [x] 실제 OpenAI provider는 provider interface 뒤에 구현하되, 기본 테스트 suite는 fake LLM provider만 사용한다.
-- [x] context가 부족할 때 무조건 "모른다"고 답하지 않는다.
-- [x] 입력 context가 존재하면 근거 있는 범위에서 최대한 답변하되, context 밖의 사실/절차/수치/정책은 단정하지 않는다.
-- [x] context가 비어 있거나 사용할 수 없으면 `answer_status=insufficient_context`로 처리한다.
-- [x] 문장별 citation은 Top context의 `context_id`만 참조해야 한다.
-- [x] Answer Verification Agent가 바로 소비할 수 있는 sentence-level citation 기반 output schema를 생성한다.
-- [x] source list는 context/source metadata를 보존한다.
-- [x] 실제 SSE streaming은 수행하지 않고 stream chunk schema/interface만 준비한다.
-- [x] 실제 Qdrant 검색, Dense/Sparse embedding, Cross-Encoder reranking, Answer Verification 직접 호출, BFF/DB/QCA/feedback/UI formatting은 MVP에서 제외한다.
-- [x] MVP 제외 기능은 `planned`, `interface_only`, `not_supported_in_mvp` 상태로만 남긴다.
+- [x] 프로젝트 root는 `/Users/younghoonlee/workspace_prj/ai-agent-templates`이다.
+- [x] 담당 영역은 `ai-agent/answer-verification-agent`이며, 다른 Agent, backend, frontend, rag-pipeline, infra 영역은 수정하지 않는다.
+- [x] 구현 전 Plan을 먼저 작성하고, 이후 feature 단위로 테스트를 먼저 작성한 뒤 최소 구현한다.
+- [x] Secret, token, credential, 실제 API key, `.env` 파일은 코드, fixture, 로그, output, 문서 예시에 남기지 않는다.
+- [x] `OPENAI_API_KEY`는 환경변수, 런타임 secret provider, 테스트용 injection 등 외부 주입 방식으로만 받는다.
+- [x] 실제 OpenAI live test는 기본 테스트 suite에 포함하지 않고, 필요 시 별도 opt-in으로 분리한다.
+- [x] 기본 테스트는 fake evaluator provider를 사용한다.
+- [x] Answer Verification Agent는 Answer Generation Agent output과 Top-5 context를 입력으로 받는다.
+- [x] MVP 실행 형태는 CLI 수동 실행, LangGraph workflow, local JSON input/output이다.
+- [x] rule-based verification을 항상 먼저 수행한다.
+- [x] MVP 기본 정책은 suspicious sentence만 LLM evaluator 대상으로 선정하는 것이며, 향후 all-sentence evaluation mode로 확장 가능해야 한다.
+- [x] overall label은 `PASS`, `SUPPORTED`, `UNSUPPORTED`, `LOW_CONFIDENCE`를 사용한다.
+- [x] sentence label은 `SUPPORTED`, `UNSUPPORTED`, `LOW_CONFIDENCE`, `NOT_CHECKED`를 사용한다.
+- [x] QCA는 MVP에서 local JSON/JSONL 산출물로만 저장하고 DB 저장은 제외한다.
+- [x] UI warning metadata는 생성하되 UI 렌더링은 구현하지 않는다.
+- [x] regeneration recommendation/request payload는 생성하되 Answer Generation Agent 직접 재호출과 재생성 loop 실행은 제외한다.
+- [x] 실제 BFF API, DB, SSE, feedback DB, production dashboard 연동은 MVP 제외다.
 
-## 4. 수정 대상 파일/디렉토리
+## 3. 수정 가능 파일/디렉토리
 
 ### 이번 계획 세션
 
 - [x] `docs/ai/current-plan.md`
 
-### MVP 구현 중 생성/수정된 영역
+### 후속 구현 세션에서 수정 가능한 영역
 
-- [x] `ai-agent/answer-generation-agent/pyproject.toml`
-- [x] `ai-agent/answer-generation-agent/.env.example`
-- [x] `ai-agent/answer-generation-agent/src/answer_generation_agent/**`
-- [x] `ai-agent/answer-generation-agent/tests/**`
-- [x] `ai-agent/answer-generation-agent/scripts/**`
-- [x] `ai-agent/answer-generation-agent/data/input/**`
-- [x] `ai-agent/answer-generation-agent/data/output/**`
-- [x] `ai-agent/answer-generation-agent/data/reports/**`
-- [x] `ai-agent/answer-generation-agent/data/failed/**`
+- [x] `ai-agent/answer-verification-agent/pyproject.toml`
+- [x] `ai-agent/answer-verification-agent/.env.example`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/**`
+- [x] `ai-agent/answer-verification-agent/tests/**`
+- [x] `ai-agent/answer-verification-agent/scripts/**`
+- [x] `ai-agent/answer-verification-agent/data/input/**`
+- [x] `ai-agent/answer-verification-agent/data/output/**`
+- [x] `ai-agent/answer-verification-agent/data/reports/**`
+- [x] `ai-agent/answer-verification-agent/data/failed/**`
+- [x] `ai-agent/answer-verification-agent/data/qca/**`
 - [x] `docs/ai/current-plan.md`
 - [x] `docs/ai/working-log.md`
 
-### 수정하지 않았음을 확인한 영역
+## 4. 수정하지 않을 영역
 
+- [x] `ai-agent/answer-generation-agent/**`
 - [x] `ai-agent/query-routing-agent/**`
 - [x] `ai-agent/history-manager-agent/**`
 - [x] `ai-agent/data-sync-agent/**`
 - [x] `ai-agent/data-ingestion-agent/**`
-- [x] `ai-agent/answer-verification-agent/**`
 - [x] 다른 Agent 디렉토리
 - [x] `backend/**`
 - [x] `frontend/**`
 - [x] `rag-pipeline/**`
 - [x] `infra/**`
-- [x] `docs/api-spec.md` 및 `docs/db-schema.md`
+- [x] `docs/api-spec.md`
+- [x] `docs/db-schema.md`
 - [x] 실제 `.env` 파일
 - [x] Secret, token, credential, 실제 API key를 포함한 파일
 
-## 5. OpenAI API Key 및 Provider 원칙
+## 5. MVP 제외 범위
 
-- [x] `OPENAI_API_KEY`는 환경변수, 로컬 secret provider, 또는 런타임 주입으로만 읽는다.
-- [x] CLI 기본 인자로 raw API key를 받지 않는다.
-- [x] 실제 `.env` 파일은 생성하거나 커밋하지 않는다.
-- [x] 필요한 경우 `.env.example`에는 placeholder 이름만 기록하고 실제 key 형태의 값은 넣지 않는다.
-- [x] OpenAI provider는 `AnswerLLMProvider` interface 뒤에 둔다.
-- [x] 기본 unit/integration test는 fake LLM provider를 사용한다.
-- [x] OpenAI live smoke test는 MVP 기본 검증에서 수행하지 않고, 필요 시 별도 opt-in flag 또는 별도 script로 분리한다.
-- [x] provider error, prompt, request, response, log-safe 출력에는 API key, Authorization header, secret-like 문자열이 포함되지 않아야 한다.
+- [x] Answer Generation Agent 직접 재호출은 구현하지 않는다.
+- [x] 실제 재생성 loop 실행은 구현하지 않는다.
+- [x] BFF API 직접 호출은 구현하지 않는다.
+- [x] DB 직접 조회/저장은 구현하지 않는다.
+- [x] QCA DB 저장은 구현하지 않는다.
+- [x] feedback DB 저장은 구현하지 않는다.
+- [x] UI 렌더링은 구현하지 않는다.
+- [x] 실제 SSE streaming 전송은 구현하지 않는다.
+- [x] 실제 OpenAI live test는 기본 테스트 suite에 포함하지 않는다.
+- [x] production evaluation dashboard 연동은 구현하지 않는다.
 
-## 6. MVP 제외 범위 고정
-
-- [x] 실제 Qdrant 검색 실행은 하지 않고 RAG Pipeline이 이미 선별한 Top-5 context JSON만 입력으로 받는다.
-- [x] Dense/Sparse embedding 생성은 하지 않는다.
-- [x] Cross-Encoder reranking 실행은 하지 않는다.
-- [x] Query Routing Agent는 호출하지 않고 routing decision JSON contract만 입력으로 검증한다.
-- [x] Answer Verification Agent는 직접 호출하지 않고 소비 가능한 output schema까지만 생성한다.
-- [x] 실제 SSE streaming 전송은 하지 않고 stream chunk schema/interface만 준비한다.
-- [x] BFF API 직접 호출, DB 직접 조회/저장, QCA 저장, feedback 저장, UI response formatting은 구현하지 않는다.
-- [x] production prompt tuning 자동화와 live evaluation regression은 후속 확장으로 둔다.
-
-## 7. Feature Breakdown 및 테스트 계획
+## 6. Feature Breakdown 및 테스트 계획
 
 ### feature1_project_skeleton_and_schema
 
-- [x] Python package 구조 생성
-- [x] `pyproject.toml` 설정
-- [x] config schema 정의
-- [x] generation input schema 정의
-- [x] routing decision input 호환 schema 정의
-- [x] top context schema 정의
-- [x] generated sentence schema 정의
-- [x] generated source schema 정의
-- [x] answer output schema 정의
-- [x] stream chunk schema 정의
-- [x] generation report / failed item / warning schema 정의
-- [x] CLI skeleton 작성
-- [x] fixture/data 디렉토리 기본 구조 생성
-- [x] schema/config 단위 테스트 작성
+구현 목표:
 
-테스트 케이스:
+- [x] Python package 구조를 생성한다.
+- [x] `pyproject.toml` 설정을 추가한다.
+- [x] config schema를 정의한다.
+- [x] verification input/output schema를 정의한다.
+- [x] sentence verification result schema를 정의한다.
+- [x] citation coverage schema를 정의한다.
+- [x] QCA output schema를 정의한다.
+- [x] regeneration request schema를 정의한다.
+- [x] verification report schema를 정의한다.
+- [x] CLI skeleton을 작성한다.
+- [x] schema/config 단위 테스트를 작성한다.
 
-- [x] config가 model, fallback_model, temperature, timeout_seconds, max_retries, max_contexts, max_answer_sentences, streaming_supported 값을 외부 입력으로 받을 수 있다.
+테스트 케이스 목록:
+
+- [x] config가 evaluator model, temperature, timeout_seconds, max_retries, evaluate_suspicious_only, min_overall_score, min_sentence_score, qca_output_enabled 값을 외부 입력으로 받을 수 있다.
 - [x] config 또는 repr/log-safe 표현에서 `OPENAI_API_KEY`, API key, Authorization 값이 노출되지 않는다.
-- [x] generation input schema가 `conversation_id`, `user_id`, `routing_decision`, `search_results.top_contexts`, `metadata`를 포함한다.
-- [x] routing decision 호환 schema가 `routing_id`, `query`, `intent`, `task_prompt_type`, `expanded_queries`, `confidence`, `warnings`를 표현한다.
-- [x] top context schema가 `context_id`, `document_id`, `chunk_id`, `title`, `space_key`, `source_url`, `content`, `score`, `rerank_score`, `metadata`를 표현한다.
-- [x] generated sentence schema가 `sentence_id`, `text`, `citations`, `citation_required`를 포함한다.
-- [x] generated source schema가 context/source metadata를 보존한다.
-- [x] answer output schema가 `answer_status`, `answer`, `sentences`, `sources`, `used_context_ids`, `routing`, `model`, `confidence`, `insufficient_context`, `unsupported_gaps`, `streaming`, `warnings`를 포함한다.
-- [x] stream chunk schema가 `generation_id`, `chunk_index`, `chunk_type`, `content`, `metadata`를 포함하고 실제 SSE 전송 정보는 포함하지 않는다.
+- [x] verification input schema가 `conversation_id`, `user_id`, `answer_output`, `contexts`, `metadata`를 포함한다.
+- [x] sentence verification result schema가 sentence_id, text, label, score, citations, matched_context_ids, failed_rules, llm_evaluation_used, reason을 표현한다.
+- [x] verification output schema가 verification_id, generation_id, overall_label, overall_score, sentence_results, unsupported_claims, citation_coverage, ui_warning, qca/ref, regeneration fields를 포함한다.
+- [x] citation coverage schema가 total_sentences, sentences_with_citations, valid_citations, invalid_citations, coverage_ratio를 표현한다.
+- [x] QCA output schema가 qca_id, question, context_refs, answer, verification metadata, quality_label을 포함한다.
+- [x] regeneration request schema가 target_generation_id, unsupported_sentence_ids, guidance를 포함한다.
 - [x] 필수 값 누락 시 명확한 validation error가 발생한다.
 - [x] CLI skeleton이 실제 OpenAI 호출 없이 config/input validation 수준에서 동작 가능하다.
 
-### feature2_generation_input_normalization
+수정 가능 파일 범위:
 
-- [x] Query Routing output + Top-5 context JSON loader 구현
-- [x] malformed JSON 처리
-- [x] generation input validation 구현
-- [x] routing decision normalization 구현
-- [x] top context normalization 구현
-- [x] context 5개 제한 구현
-- [x] `rerank_score` 또는 입력 순서 기반 top context 선택 정책 구현
-- [x] empty/invalid context warning 처리
-- [x] unsupported task prompt type -> `general` fallback 구현
-- [x] context sufficiency 판단에 필요한 normalized result 구조 구현
-- [x] normalization 테스트 작성
+- [x] `ai-agent/answer-verification-agent/pyproject.toml`
+- [x] `ai-agent/answer-verification-agent/.env.example`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/**`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_schema_config.py`
+- [x] `ai-agent/answer-verification-agent/scripts/**`
+- [x] `ai-agent/answer-verification-agent/data/**`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
 
-테스트 케이스:
+구현하지 말아야 할 MVP 제외 범위:
 
-- [x] valid generation input JSON을 내부 schema로 로드한다.
+- [x] 실제 OpenAI API 호출
+- [x] input normalization, parser, verifier, evaluator, workflow 실제 로직
+- [x] QCA DB 저장, BFF/DB/SSE/feedback/dashboard 연동
+
+완료 기준:
+
+- [x] schema/config 테스트가 통과한다.
+- [x] package skeleton과 CLI skeleton이 생성된다.
+- [x] 실제 secret 또는 `.env` 파일이 생성되지 않는다.
+
+### feature2_verification_input_normalization
+
+구현 목표:
+
+- [x] Answer Generation output + contexts JSON loader를 구현한다.
+- [x] input validation을 구현한다.
+- [x] answer output normalization을 구현한다.
+- [x] context normalization을 구현한다.
+- [x] missing contexts 처리를 구현한다.
+- [x] generated sentences가 없을 때 sentence fallback 준비 상태를 남긴다.
+- [x] normalization 테스트를 작성한다.
+
+테스트 케이스 목록:
+
+- [x] valid verification input JSON을 내부 schema로 로드한다.
 - [x] malformed JSON에서 명확한 non-retryable error가 발생한다.
-- [x] `routing_decision` 누락 시 명확한 validation error가 발생한다.
-- [x] `query` 또는 `task_prompt_type` 누락 시 명확한 validation error가 발생한다.
-- [x] top_contexts가 5개를 초과하면 상위 5개만 사용한다.
-- [x] `rerank_score`가 있으면 점수 기준으로 우선 정렬하거나 명확한 정책을 적용한다.
-- [x] content가 빈 context는 warning 후 제외된다.
-- [x] top_contexts가 비어 있으면 `insufficient_context` 판단이 가능하도록 빈 normalized context로 유지된다.
-- [x] unsupported task_prompt_type은 `general` fallback과 warning으로 처리된다.
-- [x] normalized result에 실제 검색/reranking/embedding 결과나 원본 전체 history가 과도하게 복제되지 않는다.
+- [x] `answer_output` 누락 시 명확한 validation error가 발생한다.
+- [x] `contexts` 누락 또는 빈 contexts를 안전하게 처리하고 low-confidence 후보 상태를 남긴다.
+- [x] Answer Generation output의 `sentences`, `sources`, `used_context_ids`, `routing`, `warnings`를 정규화한다.
+- [x] Top-5 contexts가 5개를 초과하면 안전하게 제한하거나 warning을 남긴다.
+- [x] content가 빈 context는 warning 후 제외하거나 low-confidence 후보로 처리한다.
+- [x] duplicate context_id는 deterministic하게 처리된다.
+- [x] missing context_id citation을 후속 parser/rule 단계가 검출할 수 있도록 보존한다.
 - [x] warning/error/result 문자열에 `OPENAI_API_KEY`, Authorization, secret-like 값이 포함되지 않는다.
 
-### feature3_prompt_template_builder
+수정 가능 파일 범위:
 
-- [x] prompt builder service 추가
-- [x] `timeline` prompt 구현
-- [x] `step_by_step` prompt 구현
-- [x] `evidence_first` prompt 구현
-- [x] `history_summary` prompt 구현
-- [x] `general` prompt 구현
-- [x] context-only answer rule 포함
-- [x] context가 존재하면 근거 있는 범위에서 최대한 답변하되, context 밖 사실은 단정하지 않는 rule 포함
-- [x] sentence-level citation instruction 포함
-- [x] Top context formatting 구현
-- [x] prompt length guard 또는 max_contexts 기반 제한 구현
-- [x] prompt builder 테스트 작성
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/**`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/schemas/**`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_verification_input_normalization.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
 
-테스트 케이스:
+구현하지 말아야 할 MVP 제외 범위:
 
-- [x] `timeline` prompt가 상황 요약, 시간/단계 흐름, 조치 순서, 근거 요구를 포함한다.
-- [x] `step_by_step` prompt가 단계별 절차, 주의사항, 확인 방법 요구를 포함한다.
-- [x] `evidence_first` prompt가 근거 문서/조항 우선, 결론, 예외/주의사항 요구를 포함한다.
-- [x] `history_summary` prompt가 변경/처리 이력, 날짜/대상/결과 요구를 포함한다.
-- [x] `general` prompt가 간결한 직접 답변과 근거 출처 요구를 포함한다.
-- [x] 모든 prompt에 context 밖 사실 단정 금지 rule이 포함된다.
-- [x] 모든 prompt에 sentence-level citation JSON 또는 구조화 citation instruction이 포함된다.
-- [x] prompt에 context_id와 source metadata가 포함된다.
-- [x] prompt에 실제 API key, Authorization, secret-like 값이 포함되지 않는다.
-- [x] prompt에 Top-5를 초과하는 context가 포함되지 않는다.
+- [x] sentence parser, rule verifier, LLM evaluator, workflow full orchestration
+- [x] Answer Generation Agent 직접 호출
+- [x] 외부 API/DB 호출
 
-### feature4_llm_provider_and_answer_generation
+완료 기준:
 
-- [x] `AnswerLLMProvider` interface 정의
-- [x] `FakeAnswerLLMProvider` 구현
-- [x] `OpenAIAnswerLLMProvider` 구현
-- [x] provider factory 또는 config 기반 provider 생성 구조 구현
-- [x] answer generation request/result schema 구현
-- [x] answer generation service 구현
-- [x] context sufficiency handling 구현
-- [x] model policy interface 또는 simple model selection 구조 구현
-- [x] OpenAI timeout/5xx retryable safe error 처리
-- [x] OpenAI auth/configuration error 처리
-- [x] invalid LLM response safe error 또는 fallback 처리
-- [x] provider/generation 테스트 작성
+- [x] normalization unit test가 통과한다.
+- [x] invalid input은 safe error로 처리된다.
+- [x] normalized result가 후속 parser/rule 단계에서 재사용 가능하다.
 
-테스트 케이스:
+### feature3_sentence_and_citation_parser
 
-- [x] fake provider가 citation-aware answer를 반환하면 generation result가 올바르게 생성된다.
-- [x] fake provider 기반 테스트는 실제 OpenAI 네트워크 호출 없이 통과한다.
-- [x] context가 비어 있으면 LLM 호출 없이 `insufficient_context`로 처리된다.
-- [x] context가 일부만 관련 있으면 근거 있는 범위에서 답변하고 warning/unsupported_gaps를 남긴다.
-- [x] context 밖 사실을 단정하는 provider output은 후속 citation/output 단계에서 warning 대상으로 남길 수 있다.
-- [x] OpenAI provider는 API key를 환경변수 또는 외부 config에서만 읽는다.
-- [x] API key가 없는 경우 provider configuration error가 발생한다.
-- [x] OpenAI provider request 구성에 model/temperature/timeout이 반영된다.
-- [x] OpenAI auth error는 non-retryable로 분류된다.
-- [x] OpenAI timeout/5xx는 retryable로 분류된다.
+구현 목표:
+
+- [x] answer sentence parsing을 구현한다.
+- [x] generated sentence schema를 처리한다.
+- [x] citation extraction을 구현한다.
+- [x] context id validation을 구현한다.
+- [x] citation coverage 계산을 구현한다.
+- [x] parser 테스트를 작성한다.
+
+테스트 케이스 목록:
+
+- [x] Answer Generation output의 generated sentences가 있으면 이를 우선 사용한다.
+- [x] generated sentences가 비어 있으면 answer text에서 문장을 fallback parsing한다.
+- [x] sentence_id가 없거나 중복이면 deterministic하게 정규화한다.
+- [x] citations는 context_id list로 정규화된다.
+- [x] 존재하는 context_id citation은 valid citation으로 분류된다.
+- [x] 존재하지 않는 context_id citation은 invalid citation으로 분류되고 warning 대상이 된다.
+- [x] citation이 없는 문장은 missing citation 상태로 보존된다.
+- [x] citation coverage count와 ratio가 정확히 계산된다.
+- [x] 빈 answer 또는 whitespace answer는 safe low-confidence/not_checked 후보로 처리된다.
+- [x] parser result에 API key, Authorization, secret-like 값이 포함되지 않는다.
+
+수정 가능 파일 범위:
+
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/**`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/schemas/**`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_sentence_and_citation_parser.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
+
+구현하지 말아야 할 MVP 제외 범위:
+
+- [x] rule-based verifier, suspicious selector, LLM evaluator
+- [x] QCA output/result builder
+- [x] 외부 API/DB 호출
+
+완료 기준:
+
+- [x] parser unit test가 통과한다.
+- [x] sentence/citation/citation coverage 구조가 후속 rule verifier에 전달 가능하다.
+
+### feature4_rule_based_verifier
+
+구현 목표:
+
+- [x] citation existence rule을 구현한다.
+- [x] valid context citation rule을 구현한다.
+- [x] token/entity overlap rule을 구현한다.
+- [x] number/date/version presence rule을 구현한다.
+- [x] source coverage rule을 구현한다.
+- [x] rule result aggregation을 구현한다.
+- [x] rule verifier 테스트를 작성한다.
+
+테스트 케이스 목록:
+
+- [x] citation이 있는 문장은 citation existence rule을 통과한다.
+- [x] citation이 없는 핵심 문장은 failed rule과 suspicious 후보가 된다.
+- [x] invalid context citation은 unsupported 또는 low-confidence rule result로 분류된다.
+- [x] sentence 핵심 token/entity가 cited context에 충분히 있으면 overlap rule을 통과한다.
+- [x] overlap이 낮으면 low-confidence 또는 suspicious로 분류된다.
+- [x] 숫자, 날짜, 버전, 퍼센트, 수치 표현이 cited context에 없으면 failed rule로 기록된다.
+- [x] multiple citations가 있을 때 source coverage가 계산된다.
+- [x] answer_status가 insufficient_context이면 문장은 NOT_CHECKED 또는 LOW_CONFIDENCE 후보로 처리된다.
+- [x] rule aggregation이 sentence별 score와 failed_rules를 deterministic하게 생성한다.
+- [x] result/warning/error 문자열에 `OPENAI_API_KEY`, Authorization, secret-like 값이 포함되지 않는다.
+
+수정 가능 파일 범위:
+
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/rule_based_verifier.py`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/__init__.py`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_rule_based_verifier.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
+
+구현하지 말아야 할 MVP 제외 범위:
+
+- [x] LLM evaluator provider
+- [x] final result builder, QCA writer, workflow full orchestration
+- [x] 외부 API/DB 호출
+
+완료 기준:
+
+- [x] rule verifier unit test가 통과한다.
+- [x] rule 결과가 suspicious selector의 입력으로 재사용 가능하다.
+
+### feature5_suspicious_sentence_selector
+
+구현 목표:
+
+- [x] suspicious sentence 선정 로직을 구현한다.
+- [x] citation missing/invalid 기준을 구현한다.
+- [x] low overlap 기준을 구현한다.
+- [x] insufficient context 기준을 구현한다.
+- [x] all-sentence evaluation mode interface를 구현한다.
+- [x] selector 테스트를 작성한다.
+
+테스트 케이스 목록:
+
+- [x] missing citation 문장이 suspicious로 선정된다.
+- [x] invalid citation 문장이 suspicious로 선정된다.
+- [x] low token/entity overlap 문장이 suspicious로 선정된다.
+- [x] number/date/version mismatch 문장이 suspicious로 선정된다.
+- [x] insufficient context 상태의 문장이 low-confidence evaluation 대상으로 분류된다.
+- [x] Answer Generation warning이 있는 문장이 suspicious 후보가 된다.
+- [x] 기본 설정에서는 suspicious sentence만 LLM evaluator 대상이 된다.
+- [x] all-sentence evaluation mode 설정 시 모든 문장이 evaluator 대상이 된다.
+- [x] evaluator 대상이 없는 경우에도 workflow가 정상적으로 rule-only 결과를 만들 수 있다.
+- [x] selector result에 API key, Authorization, secret-like 값이 포함되지 않는다.
+
+수정 가능 파일 범위:
+
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/**`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_suspicious_sentence_selector.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
+
+구현하지 말아야 할 MVP 제외 범위:
+
+- [x] LLM evaluator provider 실제 구현
+- [x] final output/QCA/regeneration builder
+- [x] 외부 API/DB 호출
+
+완료 기준:
+
+- [x] selector unit test가 통과한다.
+- [x] suspicious-only 기본 정책과 all-sentence 확장 interface가 모두 검증된다.
+
+### feature6_llm_evaluator_provider
+
+구현 목표:
+
+- [x] evaluator provider interface를 정의한다.
+- [x] OpenAI evaluator provider를 구현한다.
+- [x] fake evaluator provider를 구현한다.
+- [x] evaluator prompt builder를 구현한다.
+- [x] evaluator output parsing을 구현한다.
+- [x] safe provider error 처리를 구현한다.
+- [x] provider/evaluator 테스트를 작성한다.
+
+테스트 케이스 목록:
+
+- [x] fake evaluator가 SUPPORTED를 반환하면 sentence evaluation result가 올바르게 생성된다.
+- [x] fake evaluator가 UNSUPPORTED를 반환하면 unsupported reason과 score가 보존된다.
+- [x] fake evaluator가 LOW_CONFIDENCE를 반환하면 low-confidence result가 생성된다.
+- [x] invalid evaluator label은 LOW_CONFIDENCE fallback으로 처리된다.
+- [x] invalid JSON 또는 schema mismatch evaluator response는 safe warning으로 처리되고 rule result를 유지할 수 있다.
+- [x] evaluator prompt에 sentence text, cited context snippets, failed rules가 포함된다.
+- [x] evaluator prompt에 원본 전체 answer/context가 과도하게 포함되지 않는다.
+- [x] OpenAI provider는 API key를 외부 주입 또는 환경변수에서만 읽는다.
+- [x] API key가 없으면 provider configuration error가 발생한다.
+- [x] OpenAI timeout/5xx는 retryable safe error로 분류된다.
+- [x] OpenAI auth error는 non-retryable auth failure로 분류된다.
+- [x] 기본 pytest suite는 실제 OpenAI network call 없이 통과한다.
 - [x] error/repr/log-safe 문자열에 `OPENAI_API_KEY`, Authorization, secret-like 값이 포함되지 않는다.
 
-### feature5_citation_mapping
+수정 가능 파일 범위:
 
-- [x] LLM answer sentence parsing 구현
-- [x] sentence id 생성 또는 정규화 구현
-- [x] citation extraction 구현
-- [x] context id validation 구현
-- [x] source list builder 구현
-- [x] missing citation warning 구현
-- [x] invalid context id citation warning 및 제거 구현
-- [x] citation mapping fallback 구현
-- [x] citation 테스트 작성
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/evaluator/**`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_llm_evaluator_provider.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
 
-테스트 케이스:
+구현하지 말아야 할 MVP 제외 범위:
 
-- [x] LLM output 문장이 `GeneratedSentence` 목록으로 파싱된다.
-- [x] 문장별 citation이 Top context의 `context_id`만 참조한다.
-- [x] 존재하지 않는 context id citation은 warning 후 제거된다.
-- [x] citation이 없는 핵심 문장은 warning 대상으로 남는다.
-- [x] source list가 context_id/document_id/chunk_id/title/source_url/space_key/page_id/score/rerank_score를 보존한다.
-- [x] 같은 context가 여러 문장에서 참조되어도 source list는 중복 없이 생성된다.
-- [x] answer text와 sentence list가 일관되게 유지된다.
-- [x] citation mapping 결과에 API key, Authorization, secret-like 값이 포함되지 않는다.
+- [x] 실제 OpenAI live test를 기본 suite에 포함
+- [x] all-sentence evaluation 강제 실행
+- [x] Answer Generation 재호출 또는 feedback loop
 
-### feature6_answer_output_builder
+완료 기준:
 
-- [x] Answer Verification Agent 입력 호환 output builder 구현
-- [x] answer status 결정 구현
-- [x] confidence/warnings/unsupported_gaps 병합 구현
-- [x] used_context_ids 계산 구현
-- [x] streaming chunk schema/interface 생성
-- [x] generation report helper 구현
-- [x] failed item 또는 safe failure helper 구현
-- [x] local JSON writer 구현
-- [x] output path 생성 규칙 구현
-- [x] output builder 테스트 작성
+- [x] provider/evaluator unit test가 fake provider 기반으로 통과한다.
+- [x] OpenAI provider는 interface 뒤에 있고 API key 외부 주입 원칙을 지킨다.
 
-테스트 케이스:
+### feature7_verification_result_builder
 
-- [x] Answer output이 canonical schema 필수 필드를 모두 포함한다.
-- [x] success output이 answer, sentences, sources, used_context_ids, routing metadata를 포함한다.
-- [x] insufficient context output이 `answer_status=insufficient_context`, `insufficient_context=true`, warnings를 포함한다.
-- [x] failed output 또는 failed item이 safe reason, retryable 여부, error_type을 포함한다.
-- [x] used_context_ids는 sentence citations에서 계산된다.
-- [x] stream chunk schema는 생성되지만 실제 SSE 전송은 수행하지 않는다.
-- [x] generation report가 status, answer_status, context_count, used_context_count, sentence_count, citation_count, warnings_count를 계산한다.
-- [x] local writer가 output/report/failed JSON 파일을 생성한다.
-- [x] 저장 디렉토리가 없으면 자동 생성된다.
-- [x] output/report/failed files에 API key, token, Authorization 값이 포함되지 않는다.
+구현 목표:
 
-### feature7_langgraph_workflow_and_cli
+- [x] sentence result 병합을 구현한다.
+- [x] overall label/score 계산을 구현한다.
+- [x] unsupported claims를 생성한다.
+- [x] UI warning metadata를 생성한다.
+- [x] QCA local output을 생성한다.
+- [x] regeneration recommendation/request payload를 생성한다.
+- [x] verification report helper를 구현한다.
+- [x] local JSON writer를 구현한다.
+- [x] result builder 테스트를 작성한다.
 
-- [x] Answer Generation workflow state 정의
-- [x] workflow result schema 또는 result object 정의
-- [x] LangGraph workflow builder 또는 동등한 orchestration 구조 구현
-- [x] LangGraph optional wrapper와 sequential fallback 구조 구현
-- [x] `load_config -> load_input -> normalize_generation_input -> validate_top_contexts -> assess_context_sufficiency -> build_task_prompt -> generate_answer -> map_sentence_citations -> build_answer_output -> write_output -> write_report` node 흐름 구현
-- [x] fake provider/injected provider로 workflow 실행 가능하게 구성
-- [x] success/insufficient_context/failed 상태 처리
-- [x] CLI `scripts/run_answer_generation.py`를 실제 workflow 실행 진입점으로 확장
-- [x] CLI 인자 처리: `--input`, `--output`, `--report-output`, `--failed-output`, `--provider`, `--model`, `--max-contexts`, `--max-answer-sentences`
-- [x] CLI 실행 결과 summary 출력
-- [x] workflow/CLI integration test 작성
+테스트 케이스 목록:
 
-테스트 케이스:
+- [x] rule result와 LLM evaluator result가 sentence result로 병합된다.
+- [x] unsupported 문장이 있으면 overall label이 UNSUPPORTED 또는 LOW_CONFIDENCE로 계산된다.
+- [x] 모든 핵심 문장이 근거를 갖고 score가 충분하면 PASS 또는 SUPPORTED가 생성된다.
+- [x] insufficient context는 LOW_CONFIDENCE로 처리된다.
+- [x] unsupported_claims가 sentence_id, text, reason, citations를 포함한다.
+- [x] UI warning metadata가 unsupported/low-confidence 비율에 따라 warning_level과 reasons를 계산한다.
+- [x] QCA local output이 accepted, needs_review, rejected quality_label을 생성한다.
+- [x] regeneration recommendation이 unsupported claims 기반으로 생성된다.
+- [x] regeneration request는 payload만 생성하고 Answer Generation Agent를 직접 호출하지 않는다.
+- [x] verification report가 status, counts, llm_evaluation_count, warnings_count를 계산한다.
+- [x] local writer가 verification output, report, QCA, failed JSON/JSONL 파일을 생성한다.
+- [x] output/report/QCA/failed files에 API key, token, Authorization 값이 포함되지 않는다.
 
-- [x] fake provider를 사용해 workflow가 input normalization -> prompt build -> answer generation -> citation mapping -> output/report 저장 순서로 실행된다.
-- [x] workflow가 Answer Verification 호환 answer output JSON과 report JSON을 생성한다.
-- [x] timeline fixture에서 sentence-level citation answer가 생성된다.
-- [x] step_by_step/evidence_first/history_summary/general fixture가 각각 기대 prompt/output shape를 생성한다.
-- [x] insufficient context fixture에서 LLM 호출 없이 insufficient output/report가 생성된다.
-- [x] provider failure에서 failed output/report가 생성되고 secret이 노출되지 않는다.
-- [x] CLI가 `--input`, `--output`, `--report-output` 인자를 받아 workflow를 실행한다.
-- [x] CLI 또는 workflow output에 `OPENAI_API_KEY`, Authorization, API key, secret-like 값이 포함되지 않는다.
-- [x] LangGraph가 설치되어 있지 않거나 optional dependency인 경우에도 sequential fallback으로 실행된다.
-- [x] 실제 SSE streaming, Answer Verification 호출, Qdrant/embedding/reranking이 실행되지 않는다.
+수정 가능 파일 범위:
 
-### feature8_fixture_and_safety_tests
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/**`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/qca/**`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/regeneration/**`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/storage/**`
+- [x] `ai-agent/answer-verification-agent/tests/unit/test_verification_result_builder.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
 
-- [x] synthetic timeline fixture 작성
-- [x] synthetic step-by-step fixture 작성
-- [x] synthetic evidence-first fixture 작성
-- [x] synthetic history-summary fixture 작성
-- [x] synthetic general fixture 작성
-- [x] insufficient context fixture 작성
-- [x] malformed input fixture 작성
-- [x] provider failure fixture 또는 fake provider scenario 작성
-- [x] output file shape 검증
-- [x] Answer Verification input 호환 schema 검증
-- [x] sentence-level citation 검증
-- [x] source list 검증
-- [x] report/failed output shape 검증
-- [x] token/API key/Authorization 비노출 검증
-- [x] MVP 제외 기능 boundary test 작성
+구현하지 말아야 할 MVP 제외 범위:
 
-테스트 케이스:
+- [x] QCA DB 저장
+- [x] UI rendering
+- [x] Answer Generation Agent 직접 재호출
+- [x] production dashboard 연동
 
-- [x] timeline fixture 기반 full workflow가 `task_prompt_type=timeline`, citation-aware answer, source list를 생성한다.
-- [x] step-by-step fixture가 단계형 답변과 sentence-level citation을 생성한다.
-- [x] evidence-first fixture가 근거 우선 답변과 citation을 생성한다.
-- [x] history-summary fixture가 날짜/대상/결과 중심 답변과 citation을 생성한다.
-- [x] general fixture가 간결한 직접 답변과 citation을 생성한다.
-- [x] insufficient context fixture가 `answer_status=insufficient_context`를 생성하고 context 밖 사실을 단정하지 않는다.
-- [x] malformed input fixture에서 failed output/report가 생성된다.
-- [x] provider failure fixture에서 safe failed output/report가 생성되고 secret이 노출되지 않는다.
-- [x] output JSON이 Answer Verification Agent 소비 schema의 필수 필드를 모두 포함한다.
-- [x] 모든 sentence citation은 sources의 context_id를 참조한다.
-- [x] output JSON/report/failed files에 `OPENAI_API_KEY`, Authorization, API key, secret-like 문자열이 포함되지 않는다.
-- [x] 실제 OpenAI live API 호출 없이 전체 suite가 통과한다.
-- [x] Qdrant/embedding/reranking/Answer Verification 직접 호출/SSE/BFF/DB/QCA/feedback/UI formatting 기능이 MVP에서 실행되지 않는다.
+완료 기준:
 
-## 8. 구현 순서
+- [x] result builder unit test가 통과한다.
+- [x] Verification Output, QCA output, regeneration payload, report가 local file output으로 생성 가능하다.
 
-- [x] 1단계: `feature1_project_skeleton_and_schema` 테스트 작성 후 최소 구현
-- [x] 2단계: `feature2_generation_input_normalization` 테스트 작성 후 최소 구현
-- [x] 3단계: `feature3_prompt_template_builder` 테스트 작성 후 최소 구현
-- [x] 4단계: `feature4_llm_provider_and_answer_generation` 테스트 작성 후 최소 구현
-- [x] 5단계: `feature5_citation_mapping` 테스트 작성 후 최소 구현
-- [x] 6단계: `feature6_answer_output_builder` 테스트 작성 후 최소 구현
-- [x] 7단계: `feature7_langgraph_workflow_and_cli` 테스트 작성 후 최소 구현
-- [x] 8단계: `feature8_fixture_and_safety_tests` 보강 및 전체 검증
+### feature8_langgraph_workflow_and_cli
 
-## 9. 예상 영향 범위
+구현 목표:
 
-- [x] `ai-agent/answer-generation-agent` 내부에 독립 실행 가능한 Python package, tests, fixtures, scripts가 추가된다.
-- [x] local JSON input/output 기반 Answer Generation workflow 경로가 정의된다.
-- [x] OpenAI provider adapter와 fake provider test 구조가 정의된다.
-- [x] Answer Verification Agent가 소비할 수 있는 sentence-level citation 기반 canonical output이 정의된다.
-- [x] Backend, Frontend, RAG Pipeline, Infra, 다른 Agent에는 영향이 없어야 한다.
-- [x] Public API, DB Schema, 인증/인가 흐름은 변경하지 않는다.
-- [x] Query Routing Agent 구현은 수정하지 않고 output contract만 입력 fixture로 참조한다.
+- [x] LangGraph workflow를 구성한다.
+- [x] sequential fallback을 구성한다.
+- [x] CLI 실행 스크립트를 구현한다.
+- [x] local output 저장을 구현한다.
+- [x] report/QCA/failed 저장을 구현한다.
+- [x] fake evaluator 기반 workflow integration test를 작성한다.
 
-## 10. 문서 수정 필요 여부
+테스트 케이스 목록:
 
-- [x] 이번 세션: `docs/ai/current-plan.md`를 Answer Generation Agent 전용 계획으로 교체
-- [x] 후속 feature 구현 중 설계 결정 또는 실행 결과는 `docs/ai/working-log.md`에 기록
-- [x] API endpoint를 추가하지 않으므로 `docs/api-spec.md` 수정 불필요
-- [x] DB 저장을 구현하지 않으므로 `docs/db-schema.md` 수정 불필요
-- [x] 아키텍처 변경이 아니므로 `docs/architecture.md` 수정 불필요
+- [x] fake evaluator 기반 workflow가 load_input -> normalize -> parse -> rule verify -> select suspicious -> evaluate suspicious -> aggregate -> warning/QCA/regeneration -> write 순서로 실행된다.
+- [x] rule-based verifier가 LLM evaluator보다 먼저 실행된다.
+- [x] 기본 설정에서 suspicious sentence만 evaluator provider로 전달된다.
+- [x] evaluator failure 시 rule result를 유지하고 LOW_CONFIDENCE warning을 남긴다.
+- [x] workflow가 verification output, report, QCA, failed output을 local file로 생성한다.
+- [x] CLI가 `--input`, `--output`, `--report-output`, `--qca-output`, `--failed-output`, `--provider`, `--model` 등 필수/옵션 인자를 처리한다.
+- [x] CLI summary에 API key, Authorization, secret-like 값이 포함되지 않는다.
+- [x] LangGraph가 설치되어 있지 않아도 sequential fallback으로 명확히 실행된다.
+- [x] 실제 OpenAI live API, DB, BFF, SSE, Answer Generation 재호출이 실행되지 않는다.
 
-## 11. 완료 기준
+수정 가능 파일 범위:
+
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/workflow.py`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/scripts/run_answer_verification.py`
+- [x] `ai-agent/answer-verification-agent/src/answer_verification_agent/storage/**`
+- [x] `ai-agent/answer-verification-agent/tests/integration/test_workflow_cli.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
+
+구현하지 말아야 할 MVP 제외 범위:
+
+- [x] 실제 OpenAI live API 호출 테스트
+- [x] Answer Generation Agent 직접 재호출
+- [x] DB/QCA DB/BFF/SSE/feedback/dashboard 연동
+
+완료 기준:
+
+- [x] workflow/CLI integration test가 fake evaluator 기반으로 통과한다.
+- [x] local output/report/QCA/failed 산출물이 생성된다.
+- [x] LangGraph optional fallback 정책이 검증된다.
+
+### feature9_fixture_and_safety_tests
+
+구현 목표:
+
+- [x] synthetic supported fixture를 작성한다.
+- [x] synthetic unsupported fixture를 작성한다.
+- [x] synthetic low-confidence fixture를 작성한다.
+- [x] synthetic invalid citation fixture를 작성한다.
+- [x] synthetic numeric mismatch fixture를 작성한다.
+- [x] synthetic insufficient context fixture를 작성한다.
+- [x] malformed input/provider failure fixture를 작성한다.
+- [x] OpenAI API key/token safety test를 작성한다.
+- [x] output schema 검증을 작성한다.
+- [x] boundary test를 작성한다.
+
+테스트 케이스 목록:
+
+- [x] supported fixture가 PASS 또는 SUPPORTED overall label과 SUPPORTED sentence labels를 생성한다.
+- [x] unsupported fixture가 unsupported claims, UI warning, regeneration recommendation을 생성한다.
+- [x] low-confidence fixture가 LOW_CONFIDENCE label과 warning metadata를 생성한다.
+- [x] invalid citation fixture가 invalid citation coverage와 warning을 생성한다.
+- [x] numeric mismatch fixture가 number/date/version rule failure를 생성한다.
+- [x] insufficient context fixture가 failed가 아닌 LOW_CONFIDENCE 또는 NOT_CHECKED sentence result로 처리된다.
+- [x] malformed input fixture가 safe failed output/report를 생성한다.
+- [x] provider failure fixture가 rule result를 유지하고 safe warning/report를 생성한다.
+- [x] QCA local JSON/JSONL output shape가 검증된다.
+- [x] regeneration request payload가 생성되지만 Answer Generation Agent 직접 호출은 실행되지 않는다.
+- [x] output/report/QCA/failed files에 실제 API key, token, Authorization 값이 포함되지 않는다.
+- [x] basic test suite가 fake evaluator provider만 사용하고 실제 OpenAI live API를 호출하지 않는다.
+- [x] BFF/DB/SSE/feedback DB/production dashboard/UI rendering이 실행되지 않는다.
+
+수정 가능 파일 범위:
+
+- [x] `ai-agent/answer-verification-agent/tests/fixtures/**`
+- [x] `ai-agent/answer-verification-agent/tests/integration/test_fixture_safety.py`
+- [x] `docs/ai/current-plan.md`
+- [x] `docs/ai/working-log.md`
+
+구현하지 말아야 할 MVP 제외 범위:
+
+- [x] 새로운 runtime 기능 확장
+- [x] 실제 OpenAI live API 호출
+- [x] QCA DB 저장, feedback DB 저장, BFF/SSE/dashboard/UI 연동
+
+완료 기준:
+
+- [x] fixture/safety integration test가 통과한다.
+- [x] 전체 test suite와 compile check가 통과한다.
+- [x] MVP 제외 기능 boundary가 테스트로 고정된다.
+- [x] Answer Verification Agent MVP feature1-9 완료 여부가 working-log에 기록된다.
+
+## 7. 구현 순서
+
+- [x] 1단계: `feature1_project_skeleton_and_schema`
+- [x] 2단계: `feature2_verification_input_normalization`
+- [x] 3단계: `feature3_sentence_and_citation_parser`
+- [x] 4단계: `feature4_rule_based_verifier`
+- [x] 5단계: `feature5_suspicious_sentence_selector`
+- [x] 6단계: `feature6_llm_evaluator_provider`
+- [x] 7단계: `feature7_verification_result_builder`
+- [x] 8단계: `feature8_langgraph_workflow_and_cli`
+- [x] 9단계: `feature9_fixture_and_safety_tests`
+
+## 8. OpenAI API Key 및 Fake Provider 원칙
+
+- [x] `OPENAI_API_KEY`는 환경변수, runtime secret provider, 테스트용 주입 방식으로만 받는다.
+- [x] CLI 기본 인자로 raw API key를 받지 않는다.
+- [x] 실제 `.env` 파일은 생성하거나 커밋하지 않는다.
+- [x] `.env.example`을 후속 feature에서 만들 경우 placeholder 이름만 기록하고 실제 key 형태의 값은 넣지 않는다.
+- [x] OpenAI evaluator provider는 `AnswerEvaluatorProvider` interface 뒤에 둔다.
+- [x] 기본 unit/integration test는 fake evaluator provider를 사용한다.
+- [x] OpenAI live smoke test는 기본 검증에서 제외하고, 필요 시 별도 opt-in flag 또는 별도 script로 분리한다.
+- [x] provider error, prompt, request, response, log-safe 출력에는 API key, Authorization header, secret-like 문자열이 포함되지 않아야 한다.
+
+## 9. 완료 기준
 
 ### 이번 계획 세션 완료 기준
 
-- [x] 기존 Query Routing Agent 계획 완료 여부와 working-log 완료 기록을 확인했다.
-- [x] 필수 문서 9개를 읽고 Answer Generation Agent 요구사항을 요약했다.
-- [x] `Feature Breakdown` 기준 feature1-8 목록을 정리했다.
-- [x] feature별 테스트 케이스를 먼저 정의했다.
-- [x] 구현 순서를 정했다.
-- [x] 수정할 파일/디렉토리와 수정하지 않을 영역을 구분했다.
-- [x] OpenAI API key 주입 방식과 fake provider 기본 테스트 원칙을 명시했다.
-- [x] 실제 Qdrant 검색, embedding, Cross-Encoder reranking, Answer Verification 호출, 실제 SSE streaming은 MVP에서 제외하고 input/output schema 또는 interface까지만 다룬다는 점을 명시했다.
-- [x] context가 부족할 때 무조건 "모른다"고 답하지 않고, 입력 context가 존재하면 근거 있는 범위에서 최대한 답변하되 context 밖의 사실은 단정하지 않는 원칙을 명시했다.
-- [x] Answer Verification Agent가 소비할 수 있는 sentence-level citation 기반 output schema를 완료 기준에 포함했다.
-- [x] 완료 기준과 검증 명령을 정리했다.
-- [x] 계획을 `docs/ai/current-plan.md`에 체크리스트 형태로 저장했다.
-- [x] 구현 코드는 작성하지 않았다.
+- [x] 필수 문서를 읽고 공통 규칙과 Answer Verification Agent 요구사항을 요약했다.
+- [x] 기존 `docs/ai/current-plan.md`를 Answer Verification Agent 전용 계획으로 교체했다.
+- [x] `docs/ai/working-log.md`에서 이전 Answer Generation Agent MVP 완료 기록을 확인했다.
+- [x] Feature Breakdown 기준 feature1-9 구현 계획을 작성했다.
+- [x] 각 feature별 구현 목표, 테스트 케이스 목록, 수정 가능 파일 범위, MVP 제외 범위, 완료 기준을 포함했다.
+- [x] OpenAI API key 외부 주입 방식과 fake evaluator 기본 테스트 원칙을 명시했다.
+- [x] 실제 구현 코드, 테스트 코드, 스크립트, 패키지 파일을 작성하지 않았다.
 
 ### 전체 MVP 완료 기준
 
-- [x] Query Routing Agent output + Top-5 context JSON input schema가 fixture 기반 테스트로 검증된다.
-- [x] generation input normalization과 malformed input warning/error 처리가 테스트로 검증된다.
-- [x] task prompt type별 prompt template이 테스트로 검증된다.
-- [x] fake LLM provider 기반 answer generation이 검증된다.
-- [x] OpenAI provider가 provider interface 뒤에 분리되고 API key 외부 주입 원칙을 지킨다.
-- [x] context sufficiency handling이 `success|insufficient_context|failed` 상태로 검증된다.
-- [x] 입력 context가 존재하면 근거 있는 범위에서 답변하고 context 밖 사실은 단정하지 않는 정책이 prompt/test로 검증된다.
-- [x] sentence-level citation이 Top context의 context_id만 참조한다.
-- [x] source list가 Answer Verification Agent 검증에 필요한 metadata를 보존한다.
-- [x] Answer Verification Agent 입력 호환 output schema가 생성된다.
-- [x] stream chunk schema/interface는 정의되지만 실제 SSE 전송은 수행하지 않는다.
-- [x] local output 파일 검증과 API key/token safety 테스트가 통과한다.
-- [x] MVP 제외 기능은 실제 동작 없이 `not_supported_in_mvp`, `interface_only`, `planned` 중 하나로 명시된다.
-- [x] 기본 테스트 suite는 fake provider만 사용하고 외부 네트워크를 호출하지 않는다.
-- [x] `./scripts/format.sh`, `./scripts/lint.sh`, `./scripts/test.sh`, `./scripts/verify.sh` 결과를 기록한다.
-- [x] `git diff` 기준으로 요청 범위 외 변경이 없다.
+- [x] CLI로 Answer Verification workflow를 실행할 수 있다.
+- [x] Answer Generation Agent output과 Top-5 context JSON을 입력으로 처리할 수 있다.
+- [x] OpenAI API key는 외부 주입으로만 사용한다.
+- [x] API key가 코드, fixture, log, output file, 문서 예시에 저장되지 않는다.
+- [x] 테스트는 기본적으로 fake evaluator provider를 사용한다.
+- [x] rule-based verifier가 citation, context id, token/entity, number/date/version 근거를 검증한다.
+- [x] suspicious sentence만 LLM evaluator 대상으로 선정된다.
+- [x] all-sentence evaluation mode 확장 가능성이 있다.
+- [x] sentence-level verification result가 생성된다.
+- [x] overall label/score가 생성된다.
+- [x] UI warning metadata가 생성된다.
+- [x] QCA local JSON/JSONL output이 생성된다.
+- [x] regeneration recommendation/request payload가 생성된다.
+- [x] 실제 Answer Generation 재호출은 수행하지 않는다.
+- [x] 실제 DB 저장, UI 렌더링, SSE 전송은 수행하지 않는다.
+- [x] LangGraph workflow가 전체 단계를 orchestration한다.
+- [x] fixture 기반 integration test가 통과한다.
 
-## 12. 검증 명령
+## 10. 검증 명령
 
 후속 feature 구현 완료 전 가능한 범위에서 아래 명령을 실행한다.
 
@@ -410,7 +577,7 @@
 ./scripts/verify.sh
 ```
 
-Answer Generation package가 구성되면 agent 디렉토리에서 다음 명령을 별도로 실행한다.
+Answer Verification package가 구성되면 agent 디렉토리에서 다음 명령을 별도로 실행한다.
 
 ```bash
 python3.11 -m pytest

@@ -1,0 +1,46 @@
+{
+  "conversation_id": "conversation-supported",
+  "user_id": "user-synthetic",
+  "answer_output": {
+    "generation_id": "generation-supported",
+    "answer_status": "success",
+    "answer": "Rollback follows the documented runbook.",
+    "sentences": [
+      {
+        "sentence_id": "s1",
+        "text": "Rollback follows the documented runbook.",
+        "citations": ["ctx-001"],
+        "citation_required": true
+      }
+    ],
+    "sources": [],
+    "used_context_ids": ["ctx-001"],
+    "routing": {
+      "routing_id": "routing-supported",
+      "intent": "incident_response",
+      "task_prompt_type": "timeline"
+    },
+    "model": "synthetic-generation-model",
+    "confidence": 0.86,
+    "warnings": []
+  },
+  "contexts": [
+    {
+      "context_id": "ctx-001",
+      "document_id": "doc-001",
+      "chunk_id": "chunk-001",
+      "title": "Synthetic Rollback Runbook",
+      "space_key": "OPS",
+      "source_url": "https://example.invalid/confluence/pages/supported",
+      "content": "Rollback follows the documented runbook and includes verification evidence.",
+      "score": 0.8,
+      "rerank_score": 0.92,
+      "metadata": {
+        "page_id": "page-supported"
+      }
+    }
+  ],
+  "metadata": {
+    "query": "How should rollback be handled?"
+  }
+}

@@ -1,5 +1,505 @@
 # Working Log
 
+## 2026-05-18 - Answer Verification Agent feature9_fixture_and_safety_tests
+
+### 작업 목표
+
+- Answer Verification Agent MVP 전체를 synthetic fixture 기반으로 검증한다.
+- supported, unsupported, low-confidence, invalid citation, numeric mismatch, insufficient context, malformed input fixture를 작성한다.
+- provider failure, output schema, QCA JSON/JSONL, UI warning, regeneration request, 민감정보 비노출, MVP 제외 기능 boundary를 integration test로 고정한다.
+- 새로운 runtime 기능 확장, 실제 OpenAI live API 호출, QCA DB 저장, BFF/DB/SSE/UI 연동은 수행하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/integration/test_fixture_safety.py`를 먼저 작성했다.
+- `tests/fixtures/answer_verification/` 하위에 synthetic fixture를 추가했다.
+- 최초 테스트 실행 결과, unsupported fixture가 regeneration request를 만들지 않아 2개 테스트 실패를 확인했다.
+- unsupported fixture를 numeric/date/version hard rule failure 케이스로 조정해 unsupported claims와 regeneration request가 안정적으로 생성되게 했다.
+
+### 구현 내용
+
+- `supported.json`: PASS/SUPPORTED 정상 경로 fixture.
+- `unsupported.json`: numeric/date/version mismatch 기반 UNSUPPORTED fixture.
+- `low_confidence.json`: low overlap/low confidence 경계 fixture.
+- `invalid_citation.json`: 존재하지 않는 context id citation fixture.
+- `numeric_mismatch.json`: number/date/version rule failure fixture.
+- `insufficient_context.json`: answer_status insufficient_context + empty context fixture.
+- `malformed.json`: safe failed output/report 검증용 malformed input fixture.
+- `test_fixture_safety.py`는 full workflow output, report, QCA, failed artifact shape와 safety boundary를 검증한다.
+- provider failure는 injected failing provider로 검증해 실제 OpenAI API 호출 없이 partial success/LOW_CONFIDENCE 경로를 고정했다.
+- QCA는 local JSON/JSONL output만 검증하며 DB 저장은 수행하지 않는다.
+- regeneration은 request payload만 검증하며 Answer Generation Agent 직접 재호출은 수행하지 않는다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_fixture_safety.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_fixture_safety.py`: 최초 2 failed 확인 후 11 passed.
+- `python3.11 -m pytest`: 86 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### MVP 완료 기록
+
+- Answer Verification Agent MVP feature1-9를 모두 완료했다.
+- 실제 OpenAI live API 호출, Answer Generation Agent 직접 재호출, QCA DB 저장, BFF/DB/SSE/UI/feedback/dashboard 연동은 수행하지 않았다.
+- 남은 항목은 MVP 제외 후속 확장이다.
+
+### 후속 확장
+
+- OpenAI live smoke test opt-in script.
+- QCA DB repository adapter 및 feedback pipeline 연동.
+- Answer Generation Agent regeneration adapter와 LangGraph feedback loop.
+- BFF/API/SSE/UI warning badge 연동.
+- production evaluation dashboard 및 prompt regression 자동화.
+- evaluator model routing 및 all-sentence evaluation 운영 설정 고도화.
+
+## 2026-05-18 - Answer Verification Agent feature8_langgraph_workflow_and_cli
+
+### 작업 목표
+
+- feature2-7 컴포넌트를 workflow로 연결한다.
+- LangGraph optional wrapper와 sequential fallback을 구성한다.
+- CLI entrypoint를 실제 workflow 실행으로 확장한다.
+- local input JSON을 받아 verification output, report, QCA, failed output을 저장한다.
+- fake evaluator 기반 workflow/CLI integration test를 작성한다.
+- 실제 OpenAI live API, QCA DB 저장, BFF/DB/SSE/UI 연동, Answer Generation Agent 재호출은 수행하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/integration/test_workflow_cli.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `answer_verification_agent.workflow` 모듈이 없어 import 실패를 확인했다.
+- 테스트 케이스에는 supported workflow output, unsupported warning/regeneration, malformed input failed report, provider failure partial success, CLI file creation, injected provider openai mode no-live-call, LangGraph sequential fallback, output redaction 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/workflow.py`를 추가했다.
+- `run_verification_workflow()`는 load input, parse sentence/citation, rule verify, suspicious select, evaluator run, result aggregate, local write 순서로 실행한다.
+- LangGraph dependency가 없으면 `sequential_fallback` execution mode로 동일 기능을 수행한다.
+- evaluator failure는 workflow crash가 아니라 failed item과 `LOW_CONFIDENCE` 계열 결과로 보존한다.
+- malformed input은 safe failed output/report/failed item으로 기록한다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/scripts/run_answer_verification.py`를 실제 workflow CLI로 확장했다.
+- CLI는 `--input`, `--output`, `--report-output`, `--qca-output`, `--failed-output`, `--provider`, `--model`, `--evaluate-suspicious-only`, `--all-sentences`, `--pretty`를 지원한다.
+- `--report-output`, `--qca-output`, `--failed-output`은 생략 시 `--output` 기준 기본 경로를 사용해 기존 feature1 CLI skeleton 테스트와 호환되게 했다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/storage/local_repository.py`에 explicit output path writer와 failed artifact writer를 추가했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/integration/test_workflow_cli.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/integration/test_workflow_cli.py`: 최초 import 실패 확인 후 8 passed.
+- `python3.11 -m pytest`: 75 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature9_fixture_and_safety_tests`: MVP 전체 fixture/safety/boundary 검증을 추가한다.
+
+## 2026-05-18 - Answer Verification Agent feature7_verification_result_builder
+
+### 작업 목표
+
+- feature4 rule-based result와 feature6 evaluator result를 sentence-level verification result로 병합한다.
+- overall label/score, unsupported claims, citation coverage, UI warning metadata를 생성한다.
+- QCA local output record와 JSON/JSONL writer를 구현한다.
+- regeneration recommendation/request payload를 생성하되 Answer Generation Agent 직접 재호출은 수행하지 않는다.
+- verification report helper와 local JSON writer를 구현한다.
+- LangGraph workflow full orchestration, QCA DB 저장, UI rendering은 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_verification_result_builder.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `answer_verification_agent.verification.result_builder` 모듈이 없어 import 실패를 확인했다.
+- 테스트 케이스에는 PASS/SUPPORTED/UNSUPPORTED/LOW_CONFIDENCE output, rule+LLM merge, hard rule override, UI warning, QCA record, JSON/JSONL writer, regeneration request, report counts, failed item redaction, output redaction 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/result_builder.py`를 추가했다.
+- `VerificationBuildResult`, `build_verification_result()`, `build_failed_item()`을 구현했다.
+- rule result와 evaluator result를 sentence result로 병합하고, invalid citation/numeric mismatch 같은 hard rule failure는 evaluator supported 결과가 있어도 `UNSUPPORTED`로 유지한다.
+- overall label은 unsupported, low-confidence, warnings, failed evaluator state를 기준으로 `PASS`, `SUPPORTED`, `UNSUPPORTED`, `LOW_CONFIDENCE`로 계산한다.
+- unsupported claims와 regeneration request payload를 생성하되 Answer Generation Agent 직접 호출은 하지 않는다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/qca/records.py`를 추가해 local QCA record를 생성한다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/regeneration/request.py`를 추가해 regeneration recommendation payload를 생성한다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/storage/local_repository.py`를 추가해 verification output, report, QCA JSON/JSONL, failed item JSON을 쓴다.
+- writer와 helper는 API key, Authorization bearer, token-like marker를 redaction한다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_verification_result_builder.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_verification_result_builder.py`: 최초 import 실패 확인 후 9 passed.
+- `python3.11 -m pytest`: 67 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature8_langgraph_workflow_and_cli`: feature1-7 service/helper를 LangGraph workflow와 CLI 수동 실행 흐름으로 연결한다.
+- feature9 fixture/safety tests는 후속 세션에서 진행한다.
+
+## 2026-05-18 - Answer Verification Agent feature6_llm_evaluator_provider
+
+### 작업 목표
+
+- LLM evaluator provider interface를 정의한다.
+- fake evaluator provider와 OpenAI evaluator provider adapter를 구현한다.
+- evaluator prompt builder와 evaluator output parser를 구현한다.
+- unknown/invalid evaluator label은 `LOW_CONFIDENCE`로 safe fallback 처리한다.
+- timeout, 429, 5xx는 retryable error로, 401/403은 non-retryable auth error로 분류한다.
+- QCA writer, verification result builder, regeneration, LangGraph workflow는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_llm_evaluator_provider.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `answer_verification_agent.evaluator` 패키지가 없어 import 실패를 확인했다.
+- 테스트 케이스에는 fake evaluator deterministic result, prompt payload, valid/invalid evaluator JSON parsing, unknown label fallback, injected OpenAI transport request, missing API key, 429/5xx/timeout retryable error, 401/403 auth error, sensitive value redaction 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/evaluator/prompt.py`를 추가했다.
+- `EvaluatorPrompt`와 `build_evaluator_prompt()`를 구현해 sentence text, cited context snippets, failed rules, suspicious reasons를 provider 입력으로 조립한다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/evaluator/providers.py`를 추가했다.
+- `AnswerEvaluatorProvider` protocol, `SentenceEvaluation`, `EvaluatorProviderError`, `OpenAITransportResponse`를 정의했다.
+- `FakeEvaluatorProvider`는 scripted fake response를 deterministic하게 반환한다.
+- `OpenAIEvaluatorProvider`는 API key를 config 또는 `OPENAI_API_KEY` 환경변수에서만 읽고, injected transport로 테스트 가능하게 구성했다.
+- OpenAI request payload는 injected transport/log-safe 경로에서 raw API key를 노출하지 않는다.
+- `parse_evaluator_response()`는 evaluator JSON을 `SUPPORTED`, `UNSUPPORTED`, `LOW_CONFIDENCE`로 정규화하고 unknown label은 `LOW_CONFIDENCE`로 fallback한다.
+- provider error와 result serialization에서 API key, Authorization bearer, token-like marker가 노출되지 않도록 redaction을 적용했다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/evaluator/__init__.py`에서 feature6 public API를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_llm_evaluator_provider.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_llm_evaluator_provider.py`: 최초 import 실패 확인 후 15 passed.
+- `python3.11 -m pytest`: 58 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature7_verification_result_builder`: rule/evaluator 결과를 sentence result와 overall verification output, QCA local output, regeneration recommendation payload로 조립한다.
+- LangGraph workflow와 CLI full orchestration은 후속 feature에서 진행한다.
+
+## 2026-05-18 - Answer Verification Agent feature5_suspicious_sentence_selector
+
+### 작업 목표
+
+- feature4 rule-based verifier 결과를 입력으로 받아 LLM evaluator 대상 문장을 선정한다.
+- MVP 기본 정책은 suspicious sentence만 evaluator 대상으로 반환한다.
+- citation missing/invalid, low token overlap, number/date/version mismatch, insufficient context, score threshold 기준을 구현한다.
+- all-sentence evaluation mode 확장 interface를 제공한다.
+- LLM evaluator provider, QCA writer, regeneration, LangGraph workflow는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_suspicious_sentence_selector.py`를 먼저 작성했다.
+- 최초 테스트 실행 결과, `answer_verification_agent.verification.suspicious_selector` 모듈이 없어 import 실패를 확인했다.
+- 테스트 케이스에는 supported sentence 제외, missing citation, invalid citation, low overlap, numeric/date/version mismatch, insufficient context, score threshold, stable reason ordering, suspicious-only/all-sentence mode, sensitive value redaction 검증을 포함했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/suspicious_selector.py`를 추가했다.
+- `SuspiciousSelectorConfig`, `SuspiciousSentenceTarget`, `SuspiciousSelectionResult`를 정의했다.
+- `select_suspicious_sentences()`는 rule result와 normalized input을 받아 evaluator 대상 문장과 suspicious sentence id 목록을 생성한다.
+- 기본값은 `evaluate_suspicious_only=true`이며, `false`일 때 모든 문장을 evaluator 대상으로 반환한다.
+- failed rule을 `citation_missing`, `invalid_citation`, `low_token_overlap`, `number_date_version_mismatch` reason으로 매핑한다.
+- `answer_status=insufficient_context`, 빈 context, low-confidence 준비 상태는 `insufficient_context` reason으로 반영한다.
+- selector result serialization에서 API key, Authorization bearer, token-like marker가 노출되지 않도록 redaction을 적용했다.
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/__init__.py`에서 feature5 public API를 export했다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_suspicious_sentence_selector.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_suspicious_sentence_selector.py`: 최초 import 실패 확인 후 11 passed.
+- `python3.11 -m pytest`: 43 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature6_llm_evaluator_provider`: suspicious selector가 선정한 문장을 평가할 fake/OpenAI evaluator provider interface와 parsing/error handling을 구현한다.
+- QCA output, regeneration recommendation, LangGraph workflow는 후속 feature에서 진행한다.
+
+## 2026-05-18 - Answer Verification Agent feature4_rule_based_verifier
+
+### 작업 목표
+
+- feature3 parser 결과와 normalized contexts를 입력으로 rule-based verification을 수행한다.
+- citation existence, valid context citation, token/entity overlap, number/date/version/percent presence, source coverage rule을 구현한다.
+- rule별 result와 failed rule 목록, sentence별 preliminary label/score를 생성한다.
+- suspicious selector, LLM evaluator, QCA writer, regeneration logic, LangGraph full workflow는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_rule_based_verifier.py`를 먼저 작성했다.
+- 테스트 케이스에는 supported sentence, missing citation, invalid citation, numeric/date/version mismatch, low token overlap, source coverage warning, threshold 조정, 민감정보 redaction을 포함했다.
+- 최초 실행에서 `answer_verification_agent.verification.rule_based_verifier` 모듈이 없어 `ModuleNotFoundError`로 실패하는 것을 확인했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/rule_based_verifier.py`를 추가했다.
+- `RuleVerifierConfig`, `RuleCheckResult`, `RuleVerifiedSentence`, `RuleVerificationResult`, `run_rule_based_verification()`을 구현했다.
+- citation 존재 여부와 context id 유효성을 독립 rule로 평가한다.
+- sentence token과 cited context token overlap ratio를 계산하고 threshold 기반으로 평가한다.
+- 숫자, 날짜, 버전, 퍼센트, 수치 표현이 cited context에 존재하는지 검증한다.
+- parser의 citation coverage ratio가 threshold보다 낮으면 source coverage warning과 failed rule을 남긴다.
+- rule score delta를 집계해 preliminary `SUPPORTED`, `LOW_CONFIDENCE`, `UNSUPPORTED` label과 score를 만든다.
+- rule thresholds는 `RuleVerifierConfig`로 조정 가능하게 했다.
+- result serialization에서 API key, Authorization, token-like marker를 redaction한다.
+- 실제 OpenAI 호출, 외부 API/DB 호출, suspicious selector, LLM evaluator, QCA/regeneration/workflow 로직은 수행하지 않았다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_rule_based_verifier.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_rule_based_verifier.py`: 최초 `ModuleNotFoundError` 실패 확인 후 threshold 테스트 입력 1건 조정, 최종 8 passed.
+- `python3.11 -m pytest`: 32 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature5_suspicious_sentence_selector`: rule result 기반 suspicious sentence 선정, citation missing/invalid, low overlap, insufficient context, all-sentence evaluation mode interface를 구현한다.
+
+## 2026-05-18 - Answer Verification Agent feature3_sentence_and_citation_parser
+
+### 작업 목표
+
+- normalized Answer Generation output의 `sentences` 배열을 verification sentence로 변환한다.
+- `sentences`가 비어 있으면 `answer_output.answer` 본문에서 한국어/영어 문장 fallback parsing을 수행한다.
+- sentence별 citation을 추출/중복 제거하고, citation context_id가 입력 contexts에 존재하는지 검증한다.
+- invalid citation warning과 citation coverage를 계산해 feature4 rule-based verifier가 바로 사용할 수 있는 구조를 만든다.
+- rule-based verifier, suspicious selector, LLM evaluator, QCA writer, regeneration logic, LangGraph full workflow는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_sentence_citation_parser.py`를 먼저 작성했다.
+- 테스트 케이스에는 generated sentences 우선 사용, fallback sentence_id, text trim/normalize, citation dedupe, valid/invalid citation 분리, 한국어/영어 fallback parsing, empty answer warning, citation coverage 계산, 민감정보 redaction을 포함했다.
+- 최초 실행에서 `answer_verification_agent.verification.sentence_parser` 모듈이 없어 `ModuleNotFoundError`로 실패하는 것을 확인했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/sentence_parser.py`를 추가했다.
+- `ParsedSentence`, `SentenceCitationParseResult`, `parse_sentences_and_citations()`를 구현했다.
+- generated sentence가 있으면 이를 우선 사용하고, sentence_id가 없으면 `s1`, `s2` 형식으로 deterministic fallback id를 생성한다.
+- generated sentence가 없으면 answer text에서 한국어/영어 문장 부호 기준으로 fallback parsing한다.
+- citation은 context_id list로 정규화하고 중복/빈 값을 제거한다.
+- valid citation은 `matched_context_ids`, invalid citation은 `invalid_citations`와 warning으로 남긴다.
+- citation coverage는 total_sentences, sentences_with_citations, valid_citations, invalid_citations, coverage_ratio를 계산한다.
+- parser result serialization에서 API key, Authorization, token-like marker를 redaction한다.
+- 실제 OpenAI 호출, 외부 API/DB 호출, rule/evaluator/QCA/regeneration/workflow 로직은 수행하지 않았다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_sentence_citation_parser.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_sentence_citation_parser.py`: 최초 `ModuleNotFoundError` 실패 확인 후 8 passed.
+- `python3.11 -m pytest`: 24 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature4_rule_based_verifier`: citation existence, valid context citation, token/entity overlap, number/date/version presence, source coverage rule과 aggregation을 구현한다.
+
+## 2026-05-18 - Answer Verification Agent feature2_verification_input_normalization
+
+### 작업 목표
+
+- Answer Generation Agent output + Top-5 contexts input JSON을 로드하고 Answer Verification Agent 내부에서 사용할 canonical 형태로 정규화한다.
+- answer output, contexts, metadata의 핵심 필드는 안정적으로 정규화하고 unknown/extra field는 가능한 범위에서 보존한다.
+- `answer_output.sentences`가 비어 있으면 후속 sentence fallback 대상 warning/flag를 남기고, contexts가 없으면 low-confidence 준비 warning을 남긴다.
+- sentence parsing, citation parsing, rule-based verifier, suspicious selector, LLM evaluator, QCA writer, regeneration logic, LangGraph full workflow는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_verification_input_normalization.py`를 먼저 작성했다.
+- 테스트 케이스에는 valid JSON load, Answer Generation output 핵심 필드 보존, Top context 정규화, empty sentences fallback warning, empty contexts low-confidence warning, malformed JSON safe error, missing answer_output validation, missing context_id warning/drop, metadata/extra 보존, 민감정보 redaction을 포함했다.
+- 최초 실행에서 `answer_verification_agent.verification` package가 없어 `ModuleNotFoundError`로 실패하는 것을 확인했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/src/answer_verification_agent/verification/input_normalization.py`를 추가했다.
+- `load_verification_input()`과 `normalize_verification_input()`을 구현했다.
+- `NormalizedAnswerOutput`, `NormalizedContext`, `NormalizedVerificationInput` result 구조를 추가했다.
+- malformed JSON과 validation error는 `VerificationInputNormalizationError`로 감싸고 retryable=false, safe message로 처리한다.
+- answer output의 generation_id, answer, sentences, sources, used_context_ids, routing, model, confidence, warnings와 extra field를 보존한다.
+- contexts는 context_id/document_id/chunk_id/title/source_url/content/score/rerank_score/metadata와 extra field를 정규화하고, missing/duplicate context_id는 warning 후 제외한다.
+- 민감정보 패턴은 normalized result, warning/error message에서 redaction한다.
+- 실제 OpenAI 호출, 외부 API/DB 호출, Answer Generation Agent 직접 호출은 수행하지 않았다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_verification_input_normalization.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_verification_input_normalization.py`: 최초 `ModuleNotFoundError` 실패 확인 후 9 passed.
+- `python3.11 -m pytest`: 16 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature3_sentence_and_citation_parser`: normalized answer output에서 sentence/citation parsing, context id validation, citation coverage 계산을 구현한다.
+
+## 2026-05-18 - Answer Verification Agent feature1_project_skeleton_and_schema
+
+### 작업 목표
+
+- Answer Verification Agent의 Python package skeleton, config schema, canonical verification schema, CLI skeleton, data/fixture 기본 디렉토리를 생성한다.
+- feature1 범위는 schema/config와 validation-only CLI skeleton으로 제한한다.
+- sentence parsing, citation parsing, rule-based verifier, suspicious selector, LLM evaluator, QCA writer, regeneration logic, LangGraph full workflow는 구현하지 않는다.
+
+### 테스트 우선 진행
+
+- `ai-agent/answer-verification-agent/tests/unit/test_schema_config.py`를 먼저 작성했다.
+- 테스트 케이스에는 config 외부 주입 및 민감정보 redaction, verification input/output schema, sentence result label, citation coverage, QCA output, regeneration request, verification report, validation error, CLI skeleton validation을 포함했다.
+- 최초 실행에서 `answer_verification_agent` package가 없어 `ModuleNotFoundError`로 실패하는 것을 확인했다.
+
+### 구현 내용
+
+- `ai-agent/answer-verification-agent/pyproject.toml`을 추가했다.
+- `src/answer_verification_agent/` package skeleton을 추가했다.
+- `AnswerVerificationConfig`를 추가하고 `openai_api_key`는 repr에서 제외하며 safe dict에서는 redaction되게 했다.
+- Verification input/output, sentence verification result, citation coverage, QCA output, regeneration request, verification report, warning/failed item schema를 dataclass/enum 기반으로 정의했다.
+- validation-only app context와 CLI skeleton을 추가했다.
+- `.env.example`은 placeholder만 포함하고 실제 key 값은 넣지 않았다.
+- `data/input`, `data/output`, `data/reports`, `data/failed`, `data/qca`, `tests/fixtures` 기본 디렉토리를 `.gitkeep`으로 생성했다.
+- 실제 OpenAI 호출, verification logic, QCA DB 저장, BFF/DB/SSE/feedback/dashboard 연동은 구현하지 않았다.
+
+### 검증 명령
+
+```bash
+python3.11 -m pytest tests/unit/test_schema_config.py
+python3.11 -m pytest
+python3.11 -m compileall src scripts
+./scripts/format.sh
+./scripts/lint.sh
+./scripts/test.sh
+./scripts/verify.sh
+```
+
+### 검증 결과
+
+- `python3.11 -m pytest tests/unit/test_schema_config.py`: 최초 `ModuleNotFoundError` 실패 확인 후 7 passed.
+- `python3.11 -m pytest`: 7 passed.
+- `python3.11 -m compileall src scripts`: 성공.
+- `./scripts/format.sh`: 성공.
+- `./scripts/lint.sh`: 성공.
+- `./scripts/test.sh`: 성공. 루트 스크립트 출력은 agent 하위 pytest 상세를 표시하지 않아 agent 디렉토리 pytest 결과를 별도로 확인했다.
+- `./scripts/verify.sh`: 성공. 위와 동일하게 agent 디렉토리 pytest 결과를 별도로 확인했다.
+
+### 남은 작업
+
+- `feature2_verification_input_normalization`: Answer Generation output + contexts loader, input validation, answer/context normalization, missing contexts, sentence fallback 준비를 구현한다.
+
 ## 2026-05-18 - Answer Generation Agent feature8_fixture_and_safety_tests
 
 ### 작업 목표
