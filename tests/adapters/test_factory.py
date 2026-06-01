@@ -6,6 +6,7 @@ import pytest
 
 from app.adapters import (
     JsonFixtureSourceAdapter,
+    MissingAtlassianCredentialsError,
     UnsupportedSourceTypeError,
     build_source_adapter,
 )
@@ -35,7 +36,7 @@ def test_factory_rejects_unknown_source_type() -> None:
         build_source_adapter(_settings(source_type="unknown"))
 
 
-def test_factory_defers_atlassian_until_implemented() -> None:
-    # access_token/cloudid 전달 경로 확정 후 구현 (current-plan feature2)
-    with pytest.raises(NotImplementedError):
+def test_factory_requires_atlassian_credentials() -> None:
+    # AtlassianSourceAdapter는 구현됐지만, placeholder credentials 없이는 생성하지 않는다.
+    with pytest.raises(MissingAtlassianCredentialsError):
         build_source_adapter(_settings(source_type="atlassian"))

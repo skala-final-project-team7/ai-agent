@@ -47,6 +47,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
+from app.api.ingest_deps import build_ingest_deps
+from app.api.ingest_routes import router as ingest_router
 from app.api.query_deps import build_poc_deps, build_real_deps
 from app.api.query_routes import router as query_router
 from app.config import get_settings
@@ -72,6 +74,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         build_real_deps(settings) if settings.use_real_adapters else build_poc_deps(settings)
     )
     app.state.deps = deps
+    app.state.ingest_deps = build_ingest_deps(settings)
     app.state.settings = settings
     app.state.graph = build_query_graph(deps)
     # streaming_graph 는 SSE 라우트의 ``stream=True`` 분기 전용 — rerank 까지만
@@ -87,6 +90,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.graph = None
         app.state.streaming_graph = None
         app.state.deps = None
+        app.state.ingest_deps = None
         app.state.settings = None
 
 
@@ -97,12 +101,13 @@ def create_app() -> FastAPI:
     교체하거나, lifespan을 건너뛰고 ``app.state.graph`` 를 수동 설정한다.
     """
     app = FastAPI(
-        title="LINA RAG Pipeline",
+        title="LINA AI Agent Pipeline",
         version="0.1.0",
-        description="척척학사(LINA) Confluence 기반 RAG 챗봇 서비스의 RAG 파이프라인",
+        description="척척학사(LINA) Confluence 기반 RAG 챗봇 서비스의 통합 AI Agent 파이프라인",
         lifespan=_lifespan,
     )
     app.include_router(query_router)
+    app.include_router(ingest_router)
 
     # 운영 모니터링 — Prometheus instrumentator (feature12, PDF 0518_RAG.pdf #4).
     # ``/metrics`` 는 OpenAPI 스키마에서 제외(include_in_schema=False)하며 BFF 인증을

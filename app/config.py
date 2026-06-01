@@ -45,8 +45,27 @@ class Settings(BaseSettings):
     # --- 데이터 공급원 (docs/atlassian-api.md) ---
     source_type: str = "json_fixture"  # json_fixture | atlassian
     samples_dir: str = "samples"
-    # NOTE: access_token / cloudid 전달 경로는 미정(TBD) — docs/ai/current-plan.md 참조
+    # NOTE: access_token / cloudid 전달 경로는 미정(TBD) — docs/ai/current-plan.md 참조.
+    # 아래는 PoC placeholder(env 주입). source_type="atlassian" 시 vendored Data Ingestion
+    # Agent 에 전달된다. access_token 은 SecretStr 로 보관해 로그·직렬화에 노출하지 않는다.
     atlassian_api_base_url: str = "https://api.atlassian.com"
+    atlassian_cloud_id: str = ""
+    atlassian_access_token: SecretStr = SecretStr("")
+    atlassian_request_delay_seconds: float = 0.3
+    atlassian_max_retries: int = 3
+    atlassian_timeout_seconds: int = 20
+    # Delta Sync 가 비교할 이전 snapshot 경로. 실제 운영에서는 공유 저장소/Mongo 기반 snapshot
+    # repository 로 교체될 수 있으나, 현재 vendored Data Sync Agent 계약은 파일 경로를 요구한다.
+    data_sync_previous_snapshot: str = "data/snapshots/latest_snapshot.json"
+
+    # --- RabbitMQ ---
+    # Worker CLI 가 사용할 브로커 URL. 큐/DLQ 생성 정책은 인프라 레이어에서 관리하고,
+    # 애플리케이션은 queue_declare + ack/nack 동작만 책임진다.
+    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/%2F"
+
+    # --- Attachment Download ---
+    attachment_download_dir: str = "data/attachments"
+    attachment_download_timeout_seconds: int = 20
 
     # --- Qdrant Multi-Pool Vector Store ---
     qdrant_host: str = "localhost"
@@ -58,6 +77,7 @@ class Settings(BaseSettings):
     # --- MongoDB (ingestion_jobs / embedding_cache) ---
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db: str = "lina_rag"
+    ingest_job_status_collection: str = "ingest_job_status"
 
     # --- MySQL (space_doc_type_cache) ---
     # NOTE(P2): 운영 전환 시 비밀번호 포함 DSN이 들어오면 SecretStr로 승급해야 한다.

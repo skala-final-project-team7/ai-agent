@@ -23,11 +23,15 @@
 - jobs.py                 app/storage/jobs.py 로 이전 (외부 저장소 어댑터 일관성, feature6 Phase 2)
 """
 
+from typing import TYPE_CHECKING
+
 from app.ingestion.attachment_analyzer import (
     AttachmentAnalysisResult,
     analyze_attachment,
 )
-from app.ingestion.sync import ReconciliationResult, reconcile_deletions
+
+if TYPE_CHECKING:
+    from app.ingestion.sync import ReconciliationResult, reconcile_deletions
 
 __all__ = [
     "AttachmentAnalysisResult",
@@ -35,3 +39,16 @@ __all__ = [
     "analyze_attachment",
     "reconcile_deletions",
 ]
+
+
+def __getattr__(name: str):
+    """sync 자산은 지연 import 해 storage/qdrant_client 와의 순환 import 를 피한다."""
+    if name in {"ReconciliationResult", "reconcile_deletions"}:
+        from app.ingestion.sync import ReconciliationResult, reconcile_deletions
+
+        values = {
+            "ReconciliationResult": ReconciliationResult,
+            "reconcile_deletions": reconcile_deletions,
+        }
+        return values[name]
+    raise AttributeError(name)

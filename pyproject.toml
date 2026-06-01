@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.3",      # app/config.py 환경 변수 설정
     "httpx>=0.27",
     "tenacity>=8.3",               # LLM/외부 호출 재시도
+    "pika>=1.3",                   # RabbitMQ — Ingestion / Attachment / Chunking Queue
     # --- LLM / 오케스트레이션 ---
     "openai>=1.30",
     "langgraph>=0.2,<0.3",
@@ -75,6 +76,8 @@ build-backend = "setuptools.build_meta"
 # answer_verification_agent: ai-agent 저장소에서 vendoring한 Answer Verification Agent 패키지
 include = [
     "app*",
+    "data_ingestion_agent*",
+    "data_sync_agent*",
     "history_manager_agent*",
     "query_routing_agent*",
     "answer_generation_agent*",
@@ -93,6 +96,10 @@ extend-exclude = [
     # Original MVP reference tree retained during integration. The root pipeline
     # uses the vendored top-level packages below as primary code.
     "ai-agent",
+    "data_ingestion_agent",
+    "data_sync_agent",
+    "tests/data_ingestion_agent",
+    "tests/data_sync_agent",
     "history_manager_agent",
     "tests/history_manager_agent",
     "query_routing_agent",
@@ -121,6 +128,10 @@ ignore_missing_imports = true
 # verifier_evaluator.py)는 정상적으로 검사된다.
 exclude = [
     "ai-agent/",
+    "data_ingestion_agent/",
+    "data_sync_agent/",
+    "tests/data_ingestion_agent/",
+    "tests/data_sync_agent/",
     "history_manager_agent/",
     "tests/history_manager_agent/",
     "query_routing_agent/",
@@ -130,6 +141,11 @@ exclude = [
     "answer_verification_agent/",
     "tests/answer_verification_agent/",
 ]
+
+[[tool.mypy.overrides]]
+module = ["data_ingestion_agent.*", "data_sync_agent.*"]
+follow_imports = "skip"
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "history_manager_agent.*"

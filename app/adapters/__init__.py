@@ -17,7 +17,11 @@ OAuth 인증·access_token 관리는 Authorization Server(Spring) 책임이며, 
 """
 
 from app.adapters.base import ActiveIds, ChangeEvent, DocumentSourceAdapter
-from app.adapters.factory import UnsupportedSourceTypeError, build_source_adapter
+from app.adapters.factory import (
+    MissingAtlassianCredentialsError,
+    UnsupportedSourceTypeError,
+    build_source_adapter,
+)
 from app.adapters.json_fixture import JsonFixtureSourceAdapter
 
 __all__ = [
@@ -25,6 +29,7 @@ __all__ = [
     "ChangeEvent",
     "DocumentSourceAdapter",
     "JsonFixtureSourceAdapter",
+    "MissingAtlassianCredentialsError",
     "UnsupportedSourceTypeError",
     "build_source_adapter",
 ]
