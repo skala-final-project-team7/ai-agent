@@ -1,0 +1,92 @@
+# LINA RAG Pipeline — 로컬 개발용 외부 의존 서비스
+# --------------------------------------------------
+# 작성목적 : Qdrant Multi-Pool · MongoDB(rag_mock/ingestion_jobs/embedding_cache) ·
+#           MySQL(space_doc_type_cache) 3종을 한번에 띄운다.
+#           app/config.py의 Settings 기본값(localhost:6333, localhost:27017, localhost:3306,
+#           DB명 lina_rag)에 맞춰 .env 수정 없이 그대로 동작한다.
+# 작성일   : 2026-05-17
+# --------------------------------------------------
+# 사용법 (집 Windows 기준)
+#   docker compose up -d            # 백그라운드 기동
+#   docker compose ps               # 상태 확인
+#   docker compose logs -f qdrant   # 로그 추적
+#   docker compose down             # 정지 (볼륨 유지)
+#   docker compose down -v          # 정지 + 볼륨 삭제 (전체 초기화)
+# --------------------------------------------------
+# 주의
+#   - Qdrant Collection(title_pool/content_pool/label_pool), MongoDB Index,
+#     MySQL DDL은 RAG 파이프라인 코드(feature5-B)가 부팅 시 생성한다. 본 Compose는
+#     빈 서비스만 띄운다 — 설계서 §1·§2·§3 참조.
+#   - 운영용이 아님. 비밀번호는 평문이며 외부 노출 금지.
+
+services:
+  # --- Qdrant Multi-Pool Vector Store ---
+  # docs/db-schema.md §1 — title_pool / content_pool / label_pool
+  # Named Vector(dense 1024차원 + sparse-bm25)는 애플리케이션이 생성
+  qdrant:
+    image: qdrant/qdrant:v1.11.3
+    container_name: lina-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API (app/config.py: RAG_QDRANT_PORT=6333)
+      - "6334:6334"   # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- MongoDB ---
+  # docs/db-schema.md §2 — rag_mock.pages/attachments (백엔드 적재) +
+  #                        ingestion_jobs / embedding_cache (RAG 파이프라인)
+  mongo:
+    image: mongo:7.0
+    container_name: lina-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"   # app/config.py: RAG_MONGO_URI=mongodb://localhost:27017
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      # PoC라 인증 비활성. 운영 전환 시 MONGO_INITDB_ROOT_USERNAME/PASSWORD 추가.
+      MONGO_INITDB_DATABASE: lina_rag
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- MySQL ---
+  # docs/db-schema.md §3 — space_doc_type_cache (문서 분석기 Agent 결과 캐싱)
+  mysql:
+    image: mysql:8.4
+    container_name: lina-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: lina_rag
+      MYSQL_USER: lina
+      MYSQL_PASSWORD: lina
+      # app/config.py 기본값과 일치하려면 .env에서:
+      #   RAG_MYSQL_URI=mysql+pymysql://lina:lina@localhost:3306/lina_rag
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ulina", "-plina"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  qdrant_data:
+  mongo_data:
+  mysql_data:

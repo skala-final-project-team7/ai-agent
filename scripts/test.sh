@@ -28,6 +28,17 @@ elif [ -f "./mvnw" ]; then
   ./mvnw test
 fi
 
+# Root Python project (단독 RAG / 단일 모듈 저장소)
+if [ -f "./pyproject.toml" ] || [ -f "./requirements.txt" ]; then
+  echo ""
+  echo "==> root python tests"
+  if command -v pytest >/dev/null 2>&1; then
+    pytest
+  else
+    echo "pytest not found. Install pytest or adjust scripts/test.sh."
+  fi
+fi
+
 # Backend Java project
 if [ -f "./backend/gradlew" ]; then
   echo ""

@@ -264,26 +264,36 @@ Frontend는 사용자 채팅 화면과 관리자 화면을 제공한다.
 
 ## 9. RAG Pipeline 아키텍처
 
-RAG Pipeline은 사용자 질의를 받아 관련 문서를 검색하고 답변을 생성한다.
+RAG Pipeline은 Confluence 본문·첨부(PDF/Word/Excel) 텍스트를 색인하고, 사용자 질의에 대해
+권한 기반 검색 → 답변 생성 → 출처 검증을 수행한다. 본 저장소가 담당하는 영역이며, 상세 설계는
+다음 문서를 따른다.
 
-주요 단계:
+- RAG 파이프라인 설계: `docs/rag-pipeline-design.md` (설계서 v0.2.2 기준)
+- Adaptive Chunking 전략: `docs/chunking-strategy.md`
+- 데이터 저장소 스키마: `docs/db-schema.md`
+- API 계약: `docs/api-spec.md`
 
-1. Query Preprocessing
-2. Intent Analysis
-3. Permission Filtering
-4. Hybrid Retrieval
-5. Reranking
-6. Context Building
-7. Answer Generation
-8. Citation Verification
-9. Response Formatting
+파이프라인은 두 갈래로 구성된다.
 
-규칙:
+### 9.1 Ingestion 파이프라인
 
-- Permission Filtering을 우회하지 않는다.
-- Retrieval 결과 없이 답변을 생성하지 않는다.
-- 출처가 불명확한 답변은 제한한다.
-- 답변과 출처 Chunk의 연결 관계를 유지한다.
+표준 PageObject 수신 → 문서 분석기 `[Agent]` → 첨부 파일 분석기 `[Pipeline]` → Adaptive
+Chunker `[Pipeline]` → Dual Embedding `[Pipeline]` → Multi-Pool Vector Store(Qdrant) `[Storage]`.
+삭제 동기화는 Reconciliation 중심의 3중 전략으로 고스트 데이터를 방지한다.
+
+### 9.2 Query 파이프라인
+
+ACL Pre-filtering `[Pipeline]` → 멀티턴 히스토리 관리자 `[Agent]` → 질의 라우터 `[Agent]` →
+Multi-Pool Hybrid Search + Cross-Encoder 재순위화 `[Pipeline]` → 답변 생성기 `[Agent]` →
+답변 검증 `[Pipeline + Agent]` → 응답 포맷터 `[Pipeline]`.
+
+### 9.3 규칙
+
+- 모든 컴포넌트는 `[Agent]` / `[Pipeline]` / `[Storage]` 분류를 명시한다.
+- ACL Pre-filtering을 우회하지 않는다. 검색 호출은 `@enforce_acl`로 시스템 단에서 강제한다.
+- Retrieval 결과 없이 답변을 생성하지 않는다 (검색 0건 → 표준 분기 응답).
+- 출처가 불명확하거나 검증 실패한 답변은 제한한다.
+- 답변 문장과 출처 Chunk의 연결 관계(citation)를 유지한다.
 
 ---
 
