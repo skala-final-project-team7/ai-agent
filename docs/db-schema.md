@@ -135,12 +135,36 @@ payload 필드로 복원한다.
 복합 인덱스 + `status` 단일 인덱스를 권장 (실패 잡 필터링). 본 milestone 은 적재
 어댑터만 추가, 인덱스 생성은 운영 부트스트랩 단계에서 별도 처리.
 
-### 2.4 `embedding_cache` (멱등성)
+### 2.4 `ingest_job_status` (`/ml/ingest` API job lifecycle)
+
+`POST /ml/ingest`가 생성하고 `GET /ml/ingest/status/{jobId}`가 조회하는 수집 job lifecycle
+컬렉션이다. PoC 기본값은 in-memory store이고, `RAG_USE_REAL_ADAPTERS=true` 운영 모드에서는
+`MongoIngestJobStore`가 `RAG_INGEST_JOB_STATUS_COLLECTION` 값(기본 `ingest_job_status`)을
+사용한다.
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `job_id` | string | 수집 job id. 예: `job-000001` |
+| `status` | string | `STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` (`IngestJobStatus`) |
+| `total_pages` | integer | 전체 처리 대상 수. delta 모드에서는 changed + deleted candidate + failed |
+| `processed_pages` | integer | 처리 완료 수. delta 모드에서는 changed + deleted candidate |
+| `failed_pages` | integer | 실패 수 |
+| `started_at` | datetime | job 생성 시각(UTC 저장, API 응답은 KST 변환) |
+| `finished_at` | datetime \| null | job 종료 시각 |
+| `error` | string \| null | 실패 상세. token/cloudId 등 secret을 기록하지 않는다 |
+
+**인덱스 권장.** `job_id` unique index. 운영 대시보드가 최근 job 목록을 조회하면
+`started_at` descending index를 추가한다.
+
+`ingestion_jobs`는 페이지/단계별 처리 기록이고, `ingest_job_status`는 HTTP API job 1건의
+수명주기 상태다. 두 컬렉션은 목적이 다르므로 분리한다.
+
+### 2.5 `embedding_cache` (멱등성)
 
 `chunk_id`, `version_number`, `dense_hash`, `sparse_hash`, `computed_at`.
 동일 `chunk_id` + `version_number`는 재임베딩·재upsert 스킵.
 
-### 2.5 `chunk_lookup` (청크 풀 텍스트·첨부 download_url)
+### 2.6 `chunk_lookup` (청크 풀 텍스트·첨부 download_url)
 
 청크 단위 풀 텍스트와 첨부 다운로드 URL을 `chunk_id` 키로 조회하는 컬렉션. Qdrant
 payload의 `text_preview`(첫 200자) 한계를 보완하고, `Source.download_url`에 첨부
