@@ -96,6 +96,11 @@ def test_returns_ragstate_with_history_decision() -> None:
     assert isinstance(result.history_decision, HistoryDecision)
 
 
+def test_history_turn_role_is_normalized_to_lowercase() -> None:
+    turn = HistoryTurn(role="ASSISTANT", content="확인했습니다.")
+    assert turn.role == "assistant"
+
+
 def test_history_turns_converted_and_passed_to_provider() -> None:
     # RagState.history(HistoryTurn)가 agent 입력(ConversationTurn)으로 변환돼 provider에 전달된다
     fake = _fake("follow_up")

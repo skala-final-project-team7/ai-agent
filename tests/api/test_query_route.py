@@ -59,6 +59,7 @@ def _body(
         "question": question,
         "userId": user_id,
         "groups": groups if groups is not None else ["space:CLOUD"],
+        "spaceKey": "CLOUD",
     }
     payload.update(extra)
     return payload
@@ -268,6 +269,38 @@ async def test_query_route_missing_required_fields_returns_422(
     """question 필드 누락 → FastAPI 기본 422 (Pydantic 검증)."""
     async with _client(populated_graph) as client:
         resp = await client.post("/ml/query", json={"userId": "taesung"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_query_route_empty_groups_returns_422(
+    populated_graph: Any,
+) -> None:
+    """api-spec v2.3.0 §2-1 — groups 빈 배열은 fail-closed 검증으로 차단."""
+    async with _client(populated_graph) as client:
+        resp = await client.post("/ml/query", json=_body(groups=[]))
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_query_route_missing_space_key_returns_422(
+    populated_graph: Any,
+) -> None:
+    """api-spec v2.3.0 §2-1 — spaceKey 누락은 검색 scope 부재라 차단."""
+    payload = _body()
+    payload.pop("spaceKey")
+    async with _client(populated_graph) as client:
+        resp = await client.post("/ml/query", json=payload)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_query_route_blank_space_key_returns_422(
+    populated_graph: Any,
+) -> None:
+    """api-spec v2.3.0 §2-1 — 빈 spaceKey는 검색 scope 부재라 차단."""
+    async with _client(populated_graph) as client:
+        resp = await client.post("/ml/query", json=_body(spaceKey="  "))
     assert resp.status_code == 422
 
 

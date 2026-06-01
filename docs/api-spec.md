@@ -24,12 +24,12 @@
 > - 2026-05-29, **api-spec v2.2.0(문서 버전) 코드 정합 보강.** 업로드된 v2.2.0 대조 후 다음
 >   코드 변경을 반영: (1) 요청 `spaceKey` 를 실제 검색 **하드 스코프**(Qdrant `space_key`
 >   AND, 0건 fallback 에서도 미완화)로 적용 — 기존 RagState passthrough 해소
->   (`app/query/search_node.py`). (2) 챗 엔드포인트 **항상 스트리밍** — 클라이언트 `stream`
->   요청 필드 제거(비-스트리밍 모드 미제공), 스트리밍/비-streaming 선택은 서버 내부 PoC
->   가용성으로만 결정(`app/api/routes.py`). (3) SSE 이벤트 순서 불변식 #2 — 검증 차단 분기의
+>   (`app/query/search_node.py`). (2) 챗 엔드포인트 **항상 SSE 스트리밍** — request `stream`
+>   필드는 v2.3.0 호환을 위해 수용하되, PoC fallback 선택은 서버 내부 가용성으로 결정
+>   (`app/api/routes.py`). (3) SSE 이벤트 순서 불변식 #2 — 검증 차단 분기의
 >   대체 `token` 을 `verifying` status **이전**에 송신하도록 재배치. (4) SSE 응답 헤더
->   `Cache-Control: no-cache` 명시. (5) `history[].role` 을 Enum 정책의 UPPER(`USER`/
->   `ASSISTANT`)로 정규화(`app/schemas/rag_state.py`). (6) `ErrorResponse` 를 공통 Wrapper
+>   `Cache-Control: no-cache` 명시. (5) `history[].role` 을 v2.3.0 lowercase(`user`/
+>   `assistant`)로 정규화(`app/schemas/rag_state.py`). (6) `ErrorResponse` 를 공통 Wrapper
 >   4필드 봉투(`isSuccess`/`code`/`errorCode`/`message`)로 재정의(`app/api/errors.py`).
 > - 2026-06-01, 통합 ai-agent 브랜치 반영. `/ml/query`와 `/ml/ingest`가 같은 FastAPI 앱에
 >   등록됨. query 구현은 `app/api/query_routes.py`, 수집 구현은 `app/api/ingest_routes.py`로
@@ -70,24 +70,29 @@ uvicorn app.api.main:app --host 0.0.0.0 --port 8000
 |---|---|---|---|
 | `question` | string | Y | 사용자 자연어 질문 |
 | `conversationId` | string | N | 대화 컨텍스트 ID |
-| `history` | array | N | 이전 대화 이력 `[{ "role": "USER"\|"ASSISTANT", "content": "..." }]`. BFF가 DB에서 조회해 전달(멀티턴). `role` 값은 Enum 정책의 UPPER(`USER`/`ASSISTANT`) |
+| `history` | array | N | 이전 대화 이력 `[{ "role": "user"\|"assistant", "content": "..." }]`. BFF가 DB에서 조회해 전달(멀티턴). `role` 값은 lowercase |
 | `userId` | string | Y | ACL Pre-filtering 사용자 식별자(BFF가 JWT에서 추출, 2단계 데모는 고정값) |
-| `groups` | string[] | Y | 사용자 그룹 — ACL `should`-OR 필터 |
-| `spaceKey` | string | Y | 검색 대상 Confluence 스페이스. 2단계는 고정값(`lina.demo.fixed-space-key`) |
+| `groups` | string[] | Y | 사용자 그룹 — ACL `should`-OR 필터. 빈 배열 금지 |
+| `spaceKey` | string | Y | 검색 대상 Confluence 스페이스. 빈 문자열 금지 |
+| `stream` | boolean | N | 기본값 `false`. BFF는 항상 `true`로 호출한다. PoC 환경에서는 `true`여도 non-streaming fallback으로 `token` 이벤트가 1회 내려올 수 있다 |
 
 ```json
 {
   "question": "지난번 S3 버킷 권한 오류 때 어떻게 해결했어?",
   "conversationId": "conv-uuid-001",
   "history": [
-    { "role": "USER", "content": "S3 관련 장애 이력 알려줘" },
-    { "role": "ASSISTANT", "content": "최근 S3 관련 장애는 3건이 있었습니다..." }
+    { "role": "user", "content": "S3 관련 장애 이력 알려줘" },
+    { "role": "assistant", "content": "최근 S3 관련 장애는 3건이 있었습니다..." }
   ],
   "userId": "user-001",
   "groups": ["Cloud-Control-Center"],
-  "spaceKey": "CPC"
+  "spaceKey": "CPC",
+  "stream": true
 }
 ```
+
+> **ACL fail-closed** — `groups=[]` 또는 `spaceKey=""` 상태로 검색이 실행되지 않도록 ML도
+> request validation에서 차단한다. BFF 역시 같은 조건을 선제 차단해야 한다.
 
 > **`accessToken`/`cloudId` 미수신 (api-spec v2.2.0, 2026-05-22 변경)** — 권한은 수집 시 Qdrant
 > payload(`allowed_groups`/`allowed_users`)에 ACL로 저장되고 질의 시 `userId`/`groups`로
@@ -205,8 +210,8 @@ data: {"phase": "searching", "message": "관련 문서를 검색하고 있어요
 - `data`는 JSON 객체 `{"phase": "<phase>", "message": "<한국어 진행 메시지>"}` (다른 JSON
   이벤트와 동일하게 `ensure_ascii=False` 직렬화).
 - 각 phase는 해당 단계 진입 시 1회 송신된다.
-- **운영 streaming 경로(OpenAI 가용)에만 적용**된다. 챗 엔드포인트는 항상 스트리밍이지만
-  (클라이언트 `stream` 필드 없음), PoC 환경(OpenAI 키/generator_provider 없음)은 그래프를 단일
+- **운영 streaming 경로(OpenAI 가용)에만 적용**된다. 챗 엔드포인트는 항상 SSE 스트리밍이며,
+  request `stream`은 v2.3.0 계약 호환 필드다. PoC 환경(OpenAI 키/generator_provider 없음)은 그래프를 단일
   블로킹 호출로 실행한 뒤 모든 이벤트를 한꺼번에 flush 하므로(phase 동시 발사 — 진행 표시 가치
   없음) `status` 를 송신하지 않는다.
 

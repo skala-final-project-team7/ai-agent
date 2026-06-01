@@ -21,8 +21,8 @@
 |---|---|---|---|---|
 | `question` | string | Y | — | 사용자 자연어 질문 (최소 1자) |
 | `userId` | string | Y | — | ACL Pre-filtering 사용자 식별자 |
-| `groups` | string[] | Y | `[]` | 사용자 그룹 — ACL `should`-OR 필터 |
-| `spaceKey` | string | Y | `""` | 검색 대상 Confluence 스페이스(2단계 고정값). 현재 passthrough |
+| `groups` | string[] | Y | 없음 | 사용자 그룹 — ACL `should`-OR 필터. 빈 배열 금지 |
+| `spaceKey` | string | Y | 없음 | 검색 대상 Confluence 스페이스. 빈 문자열 금지 |
 | `conversationId` | string | N | null | 멀티턴 대화 컨텍스트 ID |
 | `history` | array | N | `[]` | 이전 대화 이력 `[{ "role": "user"\|"assistant", "content": "..." }]` (BFF가 DB에서 조회) |
 | `stream` | boolean | N | `false` | true면 토큰 단위 스트리밍. PoC 환경(OpenAI 키 없음)에서는 true여도 자동으로 비스트리밍 fallback |

@@ -47,7 +47,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from app.api.errors import ErrorCode
@@ -80,9 +80,9 @@ class QueryRequest(BaseModel):
     user_id: str = Field(
         ..., min_length=1, alias="userId", description="ACL Pre-filtering 사용자 식별자"
     )
-    groups: list[str] = Field(default_factory=list, description="사용자 그룹 — ACL should-OR 필터")
+    groups: list[str] = Field(..., min_length=1, description="사용자 그룹 — ACL should-OR 필터")
     space_key: str = Field(
-        default="", alias="spaceKey", description="검색 대상 Confluence 스페이스(2단계 고정값)"
+        ..., min_length=1, alias="spaceKey", description="검색 대상 Confluence 스페이스"
     )
     conversation_id: str | None = Field(
         default=None, alias="conversationId", description="대화 컨텍스트 ID"
@@ -90,12 +90,29 @@ class QueryRequest(BaseModel):
     history: list[HistoryTurn] = Field(
         default_factory=list, description="이전 대화 이력 [{role, content}] (BFF가 DB에서 조회)"
     )
-    # api-spec v2.2.0 §1-1 — 챗 엔드포인트는 **항상 SSE 스트리밍**이며 비-스트리밍 모드
-    # (``stream=false``)는 제공하지 않는다. 따라서 클라이언트가 제어하는 ``stream`` 요청
-    # 필드를 두지 않는다(extra=ignore 이므로 구버전 BFF 가 보내도 무시된다). 스트리밍/비-
-    # 스트리밍 선택은 오직 서버 내부 PoC 가용성(``_should_fallback_to_non_streaming``)으로만
-    # 결정한다 — OpenAI 키/generator_provider 가 없는 PoC 환경은 자동으로 비-streaming 으로
-    # 처리하되, 외부로는 동일한 SSE 이벤트 계약을 노출한다.
+    stream: bool = Field(
+        default=False,
+        description=(
+            "BFF는 true로 호출한다. PoC 환경에서는 true여도 서버 내부 non-streaming "
+            "fallback으로 token 이벤트가 1회 내려올 수 있다."
+        ),
+    )
+
+    @field_validator("groups")
+    @classmethod
+    def _normalize_groups(cls, value: list[str]) -> list[str]:
+        normalized = [str(group).strip() for group in value if str(group).strip()]
+        if not normalized:
+            raise ValueError("groups must contain at least one non-empty value")
+        return normalized
+
+    @field_validator("space_key")
+    @classmethod
+    def _normalize_space_key(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("spaceKey must not be empty")
+        return normalized
 
 
 def get_graph(request: Request) -> Any:

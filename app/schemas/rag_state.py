@@ -28,20 +28,22 @@ from app.schemas.response import Source, Verification
 class HistoryTurn(BaseModel):
     """멀티턴 대화 1턴.
 
-    ``role`` 값은 api-spec v2.2.0 §2-1 / "Enum 값 표기 정책"에 따라 ``USER`` / ``ASSISTANT``
-    (UPPER_SNAKE)다 — 저장(`docs/db-schema.md`)·외부 API 메시지 이력과 동일. BFF 는 UPPER 로
-    전달하지만, 대소문자 무관 입력을 수용하기 위해 검증 단계에서 표준 대문자로 정규화한다
-    (하위 호환 — 구버전이 소문자로 보내도 받는다).
+    ``role`` 값은 api-spec v2.3.0 §2-1 에 따라 ``user`` / ``assistant`` lowercase다.
+    메시지 저장값·외부 응답값·RAG wire 값을 동일하게 유지한다. 구버전 대문자 입력은
+    하위 호환을 위해 받아들이되 내부 표준값은 lowercase로 정규화한다.
     """
 
-    role: str  # "USER" | "ASSISTANT" (정규화 후)
+    role: str  # "user" | "assistant" (정규화 후)
     content: str
 
     @field_validator("role")
     @classmethod
     def _normalize_role(cls, value: str) -> str:
-        """role 을 api-spec Enum 정책의 UPPER 표기로 정규화한다(대소문자 무관 수용)."""
-        return value.strip().upper()
+        """role을 api-spec v2.3.0 lowercase 표기로 정규화한다(대소문자 무관 수용)."""
+        normalized = value.strip().lower()
+        if normalized not in {"user", "assistant"}:
+            raise ValueError("role must be 'user' or 'assistant'")
+        return normalized
 
 
 class HistoryDecision(BaseModel):
