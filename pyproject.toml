@@ -90,6 +90,9 @@ target-version = "py311"
 # query/router.py, app/query/generator.py, app/query/verifier_evaluator.py)는
 # 정상적으로 검사된다.
 extend-exclude = [
+    # Original MVP reference tree retained during integration. The root pipeline
+    # uses the vendored top-level packages below as primary code.
+    "ai-agent",
     "history_manager_agent",
     "tests/history_manager_agent",
     "query_routing_agent",
@@ -117,6 +120,7 @@ ignore_missing_imports = true
 # history.py, app/query/router.py, app/query/generator.py, app/query/
 # verifier_evaluator.py)는 정상적으로 검사된다.
 exclude = [
+    "ai-agent/",
     "history_manager_agent/",
     "tests/history_manager_agent/",
     "query_routing_agent/",
