@@ -13,6 +13,7 @@ from typing import Any
 from app.adapters.atlassian import (
     AtlassianSourceAdapter,
     ConfluenceRestrictionAclProvider,
+    parse_empty_restriction_policy,
     parse_group_identifier_fields,
     parse_read_restrictions_acl,
 )
@@ -231,6 +232,22 @@ def test_parse_group_identifier_fields_rejects_empty_values() -> None:
         raise AssertionError("empty group field order must be rejected")
 
 
+def test_parse_empty_restriction_policy_accepts_known_values() -> None:
+    assert parse_empty_restriction_policy(" mark_missing ") == "mark_missing"
+    assert parse_empty_restriction_policy("space_fallback") == "space_fallback"
+
+
+def test_parse_empty_restriction_policy_rejects_unknown_values() -> None:
+    try:
+        parse_empty_restriction_policy("public")
+    except ValueError as exc:
+        assert "atlassian_empty_restriction_policy" in str(exc)
+        assert "mark_missing" in str(exc)
+        assert "space_fallback" in str(exc)
+    else:
+        raise AssertionError("unknown empty restriction policy must be rejected")
+
+
 def test_confluence_restriction_acl_provider_marks_empty_restriction_missing() -> None:
     client = _FakeRestrictionClient(
         {"operation": "read", "restrictions": {"group": {"results": []}, "user": {"results": []}}}
@@ -256,6 +273,17 @@ def test_confluence_restriction_acl_provider_can_fallback_to_space_acl() -> None
 
     assert groups == ["space:ENG"]
     assert users == []
+
+
+def test_confluence_restriction_acl_provider_rejects_unknown_empty_policy() -> None:
+    client = _FakeRestrictionClient({"operation": "read", "restrictions": {}})
+
+    try:
+        ConfluenceRestrictionAclProvider(client=client, empty_restriction_policy="public")
+    except ValueError as exc:
+        assert "atlassian_empty_restriction_policy" in str(exc)
+    else:
+        raise AssertionError("unknown empty restriction policy must be rejected")
 
 
 def test_confluence_restriction_acl_provider_passes_group_mapping_options() -> None:

@@ -47,6 +47,8 @@ from app.schemas.page_object import PageObject
 if TYPE_CHECKING:
     from app.config import Settings
 
+EMPTY_RESTRICTION_POLICIES = frozenset({"mark_missing", "space_fallback"})
+
 
 class _WorkflowRunner(Protocol):
     """vendored full crawl workflow 호출 시그니처 — 테스트 주입 지점."""
@@ -76,6 +78,13 @@ class ConfluenceRestrictionAclProvider:
     empty_restriction_policy: str = "mark_missing"  # mark_missing | space_fallback
     group_identifier_fields: tuple[str, ...] = ("id", "groupId", "name")
     group_acl_prefix: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "empty_restriction_policy",
+            parse_empty_restriction_policy(self.empty_restriction_policy),
+        )
 
     def get_page_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
         raw = self.client.get_page_read_restrictions(page_id)
@@ -154,6 +163,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
                     settings.atlassian_group_acl_field_order
                 ),
                 group_acl_prefix=settings.atlassian_group_acl_prefix,
+                empty_restriction_policy=parse_empty_restriction_policy(
+                    settings.atlassian_empty_restriction_policy
+                ),
             )
         return cls(
             cloud_id=settings.atlassian_cloud_id,
@@ -307,6 +319,17 @@ def parse_group_identifier_fields(raw: str) -> tuple[str, ...]:
     if not fields:
         raise ValueError("atlassian_group_acl_field_order must contain at least one field")
     return fields
+
+
+def parse_empty_restriction_policy(raw: str) -> str:
+    """page-level restriction empty 처리 정책 문자열을 검증한다."""
+    policy = raw.strip()
+    if policy not in EMPTY_RESTRICTION_POLICIES:
+        allowed = ", ".join(sorted(EMPTY_RESTRICTION_POLICIES))
+        raise ValueError(
+            f"atlassian_empty_restriction_policy must be one of {allowed}; got {raw!r}"
+        )
+    return policy
 
 
 def _restriction_results(value: object) -> list[dict[str, Any]]:

@@ -73,11 +73,14 @@ def test_atlassian_acl_mapping_settings_defaults() -> None:
     settings = _settings_without_env_file()
     assert settings.atlassian_group_acl_field_order == "id,groupId,name"
     assert settings.atlassian_group_acl_prefix == ""
+    assert settings.atlassian_empty_restriction_policy == "mark_missing"
 
 
 def test_atlassian_acl_mapping_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER", "name,id")
     monkeypatch.setenv("RAG_ATLASSIAN_GROUP_ACL_PREFIX", "confluence-group:")
+    monkeypatch.setenv("RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY", "space_fallback")
     settings = Settings(_env_file=None)  # type: ignore[arg-type]
     assert settings.atlassian_group_acl_field_order == "name,id"
     assert settings.atlassian_group_acl_prefix == "confluence-group:"
+    assert settings.atlassian_empty_restriction_policy == "space_fallback"

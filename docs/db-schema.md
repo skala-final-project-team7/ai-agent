@@ -102,7 +102,10 @@ payload 필드로 복원한다.
 >   상위 권한 계층 처리 정책을 함께 정의해야 한다. group restriction 값은
 >   `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`(`id,groupId,name` 기본)와
 >   `RAG_ATLASSIAN_GROUP_ACL_PREFIX`로 정규화할 수 있으나, 최종 문자열은 BFF JWT
->   `groups` claim과 정확히 일치해야 한다.
+>   `groups` claim과 정확히 일치해야 한다. restriction empty 기본 정책은
+>   `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing`이며, 이때 `allowed_groups=[]`,
+>   `allowed_users=[]`로 두어 색인 단계에서 `INVALID_ACL` 처리한다. PoC/데모에서는
+>   `space_fallback`으로 `space:{space_key}` ACL을 합성할 수 있다.
 >
 > Payload는 `space_key` + `allowed_groups` + `allowed_users`를 **모두 인덱싱**한 채로 둔다.
 > 검색 필터 생성은 `app/query/acl.py`에 격리되어 있어, 수집 단계가 page-level ACL을 채우면
