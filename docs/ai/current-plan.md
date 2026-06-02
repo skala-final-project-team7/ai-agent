@@ -79,7 +79,7 @@
 - [x] `DocumentSourceAdapter` 인터페이스 + `ActiveIds`/`ChangeEvent` (`app/adapters/base.py`)
 - [x] `JsonFixtureSourceAdapter` — `samples/*.json` → PageObject 변환 (92p 로드 검증, PoC ACL 합성)
 - [x] `AtlassianSourceAdapter` — vendored Data Ingestion Agent workflow를 `DocumentSourceAdapter` 계약으로 감싸 PageObject 변환까지 통합. 현재 ACL은 PoC `space_key` 합성.
-- [~] `AtlassianSourceAdapter` 운영 ACL 보강 — Admin Key header 설정(`RAG_ATLASSIAN_USE_ADMIN_KEY`) + `restriction/byOperation/read` 조회 client + read restriction 응답 → `allowed_users`/`allowed_groups` 매핑 seam 구현 완료. 남은 작업: Confluence group 식별자 ↔ BFF JWT `groups` claim 매핑 합의, page-level restriction이 비어 있는 경우 상위 folder/page/space permission 처리 정책 확정.
+- [~] `AtlassianSourceAdapter` 운영 ACL 보강 — Admin Key header 설정(`RAG_ATLASSIAN_USE_ADMIN_KEY`) + `restriction/byOperation/read` 조회 client + read restriction 응답 → `allowed_users`/`allowed_groups` 매핑 seam 구현 완료. Confluence group 식별자 우선순위(`RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`)와 prefix(`RAG_ATLASSIAN_GROUP_ACL_PREFIX`) 설정 seam도 추가되어 BFF JWT `groups` claim 형식에 맞출 수 있다. 남은 작업: 실제 claim 값 합의, page-level restriction이 비어 있는 경우 상위 folder/page/space permission 처리 정책 확정.
 
 ## Milestone B — Ingestion 파이프라인
 

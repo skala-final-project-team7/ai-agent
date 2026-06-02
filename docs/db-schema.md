@@ -99,7 +99,10 @@ payload 필드로 복원한다.
 > - **(B) 운영 page-level ACL — 도입 예정.** Confluence read restriction의 user/group 결과를
 >   각각 `allowed_users` / `allowed_groups`로 매핑한다. page-level restriction이 비어 있어도
 >   상위 folder/page restriction 또는 space permission으로 일반 조회가 차단될 수 있으므로,
->   상위 권한 계층 처리 정책을 함께 정의해야 한다.
+>   상위 권한 계층 처리 정책을 함께 정의해야 한다. group restriction 값은
+>   `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`(`id,groupId,name` 기본)와
+>   `RAG_ATLASSIAN_GROUP_ACL_PREFIX`로 정규화할 수 있으나, 최종 문자열은 BFF JWT
+>   `groups` claim과 정확히 일치해야 한다.
 >
 > Payload는 `space_key` + `allowed_groups` + `allowed_users`를 **모두 인덱싱**한 채로 둔다.
 > 검색 필터 생성은 `app/query/acl.py`에 격리되어 있어, 수집 단계가 page-level ACL을 채우면

@@ -19,6 +19,7 @@ OAuth 인증·access_token 관리는 Authorization Server(Spring) 책임이며, 
 from app.adapters.atlassian import (
     AtlassianSourceAdapter,
     ConfluenceRestrictionAclProvider,
+    parse_group_identifier_fields,
     parse_read_restrictions_acl,
 )
 from app.adapters.base import ActiveIds, ChangeEvent, DocumentSourceAdapter
@@ -39,5 +40,6 @@ __all__ = [
     "MissingAtlassianCredentialsError",
     "UnsupportedSourceTypeError",
     "build_source_adapter",
+    "parse_group_identifier_fields",
     "parse_read_restrictions_acl",
 ]

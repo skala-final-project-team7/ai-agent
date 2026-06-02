@@ -13,6 +13,7 @@ from typing import Any
 from app.adapters.atlassian import (
     AtlassianSourceAdapter,
     ConfluenceRestrictionAclProvider,
+    parse_group_identifier_fields,
     parse_read_restrictions_acl,
 )
 from app.adapters.json_fixture import parse_atlassian_datetime
@@ -183,6 +184,53 @@ def test_parse_read_restrictions_acl_maps_groups_and_users() -> None:
     assert users == ["712020:user-1", "712020:user-2"]
 
 
+def test_parse_read_restrictions_acl_uses_configured_group_field_order() -> None:
+    raw = {
+        "operation": "read",
+        "restrictions": {
+            "group": {
+                "results": [
+                    {"id": "group-id-1", "name": "frontend"},
+                    {"id": "group-id-2", "name": "platform"},
+                ]
+            },
+            "user": {"results": []},
+        },
+    }
+
+    groups, users = parse_read_restrictions_acl(raw, group_identifier_fields=("name", "id"))
+
+    assert groups == ["frontend", "platform"]
+    assert users == []
+
+
+def test_parse_read_restrictions_acl_applies_group_prefix() -> None:
+    raw = {
+        "operation": "read",
+        "restrictions": {
+            "group": {"results": [{"id": "group-id-1"}, {"id": "group-id-1"}]},
+            "user": {"results": []},
+        },
+    }
+
+    groups, _users = parse_read_restrictions_acl(raw, group_acl_prefix="confluence-group:")
+
+    assert groups == ["confluence-group:group-id-1"]
+
+
+def test_parse_group_identifier_fields_splits_comma_separated_values() -> None:
+    assert parse_group_identifier_fields(" name, id ,groupId ") == ("name", "id", "groupId")
+
+
+def test_parse_group_identifier_fields_rejects_empty_values() -> None:
+    try:
+        parse_group_identifier_fields(" , ")
+    except ValueError as exc:
+        assert "atlassian_group_acl_field_order" in str(exc)
+    else:
+        raise AssertionError("empty group field order must be rejected")
+
+
 def test_confluence_restriction_acl_provider_marks_empty_restriction_missing() -> None:
     client = _FakeRestrictionClient(
         {"operation": "read", "restrictions": {"group": {"results": []}, "user": {"results": []}}}
@@ -207,4 +255,26 @@ def test_confluence_restriction_acl_provider_can_fallback_to_space_acl() -> None
     groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
 
     assert groups == ["space:ENG"]
+    assert users == []
+
+
+def test_confluence_restriction_acl_provider_passes_group_mapping_options() -> None:
+    client = _FakeRestrictionClient(
+        {
+            "operation": "read",
+            "restrictions": {
+                "group": {"results": [{"id": "group-id-1", "name": "frontend"}]},
+                "user": {"results": []},
+            },
+        }
+    )
+    provider = ConfluenceRestrictionAclProvider(
+        client=client,
+        group_identifier_fields=("name", "id"),
+        group_acl_prefix="confluence-group:",
+    )
+
+    groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
+
+    assert groups == ["confluence-group:frontend"]
     assert users == []

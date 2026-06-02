@@ -74,10 +74,16 @@ class ConfluenceRestrictionAclProvider:
 
     client: Any
     empty_restriction_policy: str = "mark_missing"  # mark_missing | space_fallback
+    group_identifier_fields: tuple[str, ...] = ("id", "groupId", "name")
+    group_acl_prefix: str = ""
 
     def get_page_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
         raw = self.client.get_page_read_restrictions(page_id)
-        allowed_groups, allowed_users = parse_read_restrictions_acl(raw)
+        allowed_groups, allowed_users = parse_read_restrictions_acl(
+            raw,
+            group_identifier_fields=self.group_identifier_fields,
+            group_acl_prefix=self.group_acl_prefix,
+        )
         if allowed_groups or allowed_users:
             return allowed_groups, allowed_users
         if self.empty_restriction_policy == "space_fallback":
@@ -143,7 +149,11 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
                     max_retries=settings.atlassian_max_retries,
                     timeout_seconds=settings.atlassian_timeout_seconds,
                     use_admin_key=settings.atlassian_use_admin_key,
-                )
+                ),
+                group_identifier_fields=parse_group_identifier_fields(
+                    settings.atlassian_group_acl_field_order
+                ),
+                group_acl_prefix=settings.atlassian_group_acl_prefix,
             )
         return cls(
             cloud_id=settings.atlassian_cloud_id,
@@ -263,7 +273,12 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
         return self._acl_provider.get_page_acl(page_id=page_id, space_key=space_key)
 
 
-def parse_read_restrictions_acl(raw: dict[str, Any]) -> tuple[list[str], list[str]]:
+def parse_read_restrictions_acl(
+    raw: dict[str, Any],
+    *,
+    group_identifier_fields: tuple[str, ...] = ("id", "groupId", "name"),
+    group_acl_prefix: str = "",
+) -> tuple[list[str], list[str]]:
     """Confluence read restriction 응답에서 allowed_groups/users를 추출한다."""
     restrictions = raw.get("restrictions")
     if not isinstance(restrictions, dict):
@@ -271,13 +286,27 @@ def parse_read_restrictions_acl(raw: dict[str, Any]) -> tuple[list[str], list[st
 
     group_results = _restriction_results(restrictions.get("group"))
     user_results = _restriction_results(restrictions.get("user"))
-    groups = [_group_acl_value(group) for group in group_results]
+    groups = [
+        _with_prefix(_group_acl_value(group, group_identifier_fields), group_acl_prefix)
+        for group in group_results
+    ]
     users = [
         str(user.get("accountId")).strip()
         for user in user_results
         if isinstance(user.get("accountId"), str) and str(user.get("accountId")).strip()
     ]
     return _dedupe_non_empty(groups), _dedupe_non_empty(users)
+
+
+def parse_group_identifier_fields(raw: str) -> tuple[str, ...]:
+    """환경 변수 문자열을 group identifier field 우선순위 tuple로 변환한다.
+
+    빈 값 또는 구분자만 있는 값은 운영 실수를 조기에 드러내기 위해 ValueError로 거부한다.
+    """
+    fields = tuple(field.strip() for field in raw.split(",") if field.strip())
+    if not fields:
+        raise ValueError("atlassian_group_acl_field_order must contain at least one field")
+    return fields
 
 
 def _restriction_results(value: object) -> list[dict[str, Any]]:
@@ -289,12 +318,18 @@ def _restriction_results(value: object) -> list[dict[str, Any]]:
     return [item for item in results if isinstance(item, dict)]
 
 
-def _group_acl_value(group: dict[str, Any]) -> str:
-    for key in ("id", "groupId", "name"):
+def _group_acl_value(group: dict[str, Any], identifier_fields: tuple[str, ...]) -> str:
+    for key in identifier_fields:
         value = group.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _with_prefix(value: str, prefix: str) -> str:
+    if not value:
+        return ""
+    return f"{prefix}{value}" if prefix else value
 
 
 def _dedupe_non_empty(values: list[str]) -> list[str]:

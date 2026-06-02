@@ -67,3 +67,17 @@ def test_settings_use_real_adapters_env_override(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("RAG_USE_REAL_ADAPTERS", "true")
     settings = Settings(_env_file=None)  # type: ignore[arg-type]
     assert settings.use_real_adapters is True
+
+
+def test_atlassian_acl_mapping_settings_defaults() -> None:
+    settings = _settings_without_env_file()
+    assert settings.atlassian_group_acl_field_order == "id,groupId,name"
+    assert settings.atlassian_group_acl_prefix == ""
+
+
+def test_atlassian_acl_mapping_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER", "name,id")
+    monkeypatch.setenv("RAG_ATLASSIAN_GROUP_ACL_PREFIX", "confluence-group:")
+    settings = Settings(_env_file=None)  # type: ignore[arg-type]
+    assert settings.atlassian_group_acl_field_order == "name,id"
+    assert settings.atlassian_group_acl_prefix == "confluence-group:"

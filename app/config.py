@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Admin Key 활성화/만료 자체는 backend/infra 운영 영역이며, 본 설정은 활성화된
     # Admin Key를 사용하는 호출임을 명시하는 header만 제어한다.
     atlassian_use_admin_key: bool = False
+    # Confluence read restriction 의 group 결과를 allowed_groups 로 변환할 때 사용할
+    # 식별자 우선순위. BFF JWT groups claim 과 같은 문자열이어야 검색 ACL 이 매칭된다.
+    atlassian_group_acl_field_order: str = "id,groupId,name"
+    # 필요 시 group 값 앞에 붙일 prefix. 기본값은 무변환이며, 예: "confluence-group:".
+    atlassian_group_acl_prefix: str = ""
     # Delta Sync 가 비교할 이전 snapshot 경로. 실제 운영에서는 공유 저장소/Mongo 기반 snapshot
     # repository 로 교체될 수 있으나, 현재 vendored Data Sync Agent 계약은 파일 경로를 요구한다.
     data_sync_previous_snapshot: str = "data/snapshots/latest_snapshot.json"
