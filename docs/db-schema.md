@@ -83,20 +83,27 @@ payload 필드로 복원한다.
 검색 시 ACL 필터는 `@enforce_acl` 데코레이터에서 항상 `AND`로 주입된다. ACL 조건이 빠진 검색
 호출은 `ACLViolationError`로 거부된다. 상세는 `docs/rag-pipeline-design.md` §6.
 
-> **✓ ACL 필드 모델 — PoC 결정: 대안 (A) `space_key` 합성** (ingestion↔rag 합의, **ADR 0003** 참조).
-> 설계서·기획서 §6.6은 ACL을 청크별 `allowed_groups`/`allowed_users` Payload로 정의하나, 제공된
-> Atlassian API 명세에는 페이지 단위 권한(content restrictions) API가 없고 **Space 단위 권한
-> (`DATA-03` — 사용자가 접근 가능한 Space 목록)만** 존재한다(기획서 §6.2/§6.5도 ACL을 '스페이스
-> 접근 권한'으로 기술, 샘플 데이터에도 ACL 필드 없음). 따라서 PoC는 아래 (A)로 확정한다.
+> **✓ ACL 필드 모델 — `allowed_groups` / `allowed_users` payload 고정** (ADR 0003 참조).
+> 검색 계층은 항상 `allowed_groups OR allowed_users`를 ACL 조건으로 사용한다. PoC/샘플 데이터는
+> 아직 page-level ACL 원천이 없어 `allowed_groups=["space:{space_key}"]`, `allowed_users=[]`로
+> 합성한다.
 >
-> - **(A) `space_key` 기반 — 채택.** 수집 시 `allowed_groups`를 `["space:{space_key}"]`로 합성하고
->   (`_synthesize_acl`/`synthesize_space_acl`), 검색 시 `app/query/acl.py:build_acl_filter`가 JWT
->   `groups`(`space:{key}` 형식 — ADR 0002)를 `allowed_groups`에 OR 매칭한다. 입도는 스페이스 단위.
-> - **(B) `allowed_groups`/`allowed_users`(페이지별) — 보류.** Confluence content restrictions API
->   추가 도입 필요(명세 외). 도입 시 `build_acl_filter`/`_synthesize_acl`만 교체 + 재색인, 별도 ADR.
+> 2026-06-02 Admin Key 실측 결과, Confluence는 Admin Key header 사용 시 일반 권한에서 보이지
+> 않는 페이지도 조회할 수 있고, page-level read restriction은
+> `/rest/api/content/{pageId}/restriction/byOperation/read`에서 별도 조회할 수 있음이 확인됐다.
+> 따라서 운영 Confluence 수집 경로는 아래 (B)를 후속 구현 목표로 둔다.
 >
-> 모델 교체 여지 보존을 위해 Payload는 `space_key` + `allowed_groups` + `allowed_users`를 **모두
-> 인덱싱**한 채로 둔다. 검색 필터 생성은 `app/query/acl.py`에 격리돼 결정에 따라 그 함수만 교체한다.
+> - **(A) PoC `space_key` 기반 — 현재 구현 유지.** 수집 시 `allowed_groups`를
+>   `["space:{space_key}"]`로 합성하고(`_synthesize_acl`/`synthesize_space_acl`), 검색 시
+>   BFF가 전달한 `groups=["space:{key}"]`와 매칭한다. 입도는 스페이스 단위.
+> - **(B) 운영 page-level ACL — 도입 예정.** Confluence read restriction의 user/group 결과를
+>   각각 `allowed_users` / `allowed_groups`로 매핑한다. page-level restriction이 비어 있어도
+>   상위 folder/page restriction 또는 space permission으로 일반 조회가 차단될 수 있으므로,
+>   상위 권한 계층 처리 정책을 함께 정의해야 한다.
+>
+> Payload는 `space_key` + `allowed_groups` + `allowed_users`를 **모두 인덱싱**한 채로 둔다.
+> 검색 필터 생성은 `app/query/acl.py`에 격리되어 있어, 수집 단계가 page-level ACL을 채우면
+> 검색 계층은 추가 변경 없이 사용자/그룹 ACL을 적용할 수 있다.
 
 ---
 

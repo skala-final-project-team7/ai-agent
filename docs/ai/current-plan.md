@@ -28,7 +28,7 @@
 
 ### 미정 (TBD) — 기록 후 후속 단계에서 해소
 
-- [x] **PoC ACL 모델 — 결정됨 (ADR 0003 항목 1)**: (A) `space_key` 합성 확정(ADR 0002 `space:` prefix). `JsonFixtureSourceAdapter._synthesize_acl`(`allowed_groups = ["space:{space_key}"]`)과 ingestion `synthesize_space_acl`, rag `build_acl_filter`(검색 seam)가 정합. (B) content restrictions 도입은 보류(명세 외, 별도 ADR) — 도입 시 `build_acl_filter`/`_synthesize_acl`만 교체 + 재색인. `docs/adr/0003-ingestion-rag-shared-contracts.md` 참조
+- [x] **PoC ACL 모델 — 결정됨 (ADR 0003 항목 1)**: (A) `space_key` 합성 확정(ADR 0002 `space:` prefix). `JsonFixtureSourceAdapter._synthesize_acl`(`allowed_groups = ["space:{space_key}"]`)과 ingestion `synthesize_space_acl`, rag `build_acl_filter`(검색 seam)가 정합. 2026-06-02 Admin Key 실측으로 Confluence page-level read restriction 조회가 가능함을 확인했으므로, 운영 Confluence 수집은 (B) `allowed_users`/`allowed_groups` page-level ACL 채집을 후속 목표로 둔다. `docs/adr/0003-ingestion-rag-shared-contracts.md` 참조
 - [x] **`access_token`/`cloudid` 전달 경로 — ingestion↔rag 합의 불필요(Auth/BFF 소관, ADR 0003)**: Authorization Server(Spring)→BFF→ML 전달 방식은 두 ML 레포 간 결정 대상이 아니다. RAG 코어 코드는 이 결정과 무관하게 선행 진행(rag는 JWT 발급/검증 없이 추출만)
 - [ ] **PageObject 계약 동결** — `attachments[]` 등 스펙 동결 (`docs/rag-pipeline-design.md` §7.1)
 
@@ -67,18 +67,19 @@
 - [x] `app/config.py` — pydantic-settings 환경 설정
 - [x] feature1 단위 테스트 통과 (35 passed)
 
-### feature2: Document Source Adapter  ⏳ 진행 중 (데이터 계층 완료, Atlassian 어댑터 보류)
+### feature2: Document Source Adapter  ⏳ 진행 중 (Atlassian adapter 통합, 운영 ACL 보강 필요)
 
 - 요구사항: 데이터 공급원 추상화. JSON 픽스처 어댑터 + Atlassian 직접 호출 어댑터
 - 수정 대상: `app/adapters/{base,json_fixture,atlassian}.py`
 - 테스트: `samples/*.json`으로 `JsonFixtureSourceAdapter` 계약 검증, mock HTTP로 `AtlassianSourceAdapter`의 `fetch_pages`/`list_active_ids`/`watch_changes` 검증
-- 위험: `access_token`/`cloudid` 전달 방식 미확정 (선행 의존성 참조)
+- 위험: `access_token`/`cloudid` 전달 방식은 BFF/infra 주입 대상. Admin Key 운영 방식과 group restriction → JWT `groups` 매핑 방식은 backend/infra 합의 필요.
 
 작업 항목:
 
 - [x] `DocumentSourceAdapter` 인터페이스 + `ActiveIds`/`ChangeEvent` (`app/adapters/base.py`)
 - [x] `JsonFixtureSourceAdapter` — `samples/*.json` → PageObject 변환 (92p 로드 검증, PoC ACL 합성)
-- [ ] `AtlassianSourceAdapter` — `atlassian-python-api`로 `DATA-01`(Full Crawl) / `DATA-02`(CQL Delta Sync) / `DATA-03`(Space 목록) 호출 (`docs/atlassian-api.md`). **`access_token`/`cloudid` 전달 경로 확정 후 착수**
+- [x] `AtlassianSourceAdapter` — vendored Data Ingestion Agent workflow를 `DocumentSourceAdapter` 계약으로 감싸 PageObject 변환까지 통합. 현재 ACL은 PoC `space_key` 합성.
+- [ ] `AtlassianSourceAdapter` 운영 ACL 보강 — Admin Key header + `restriction/byOperation/read` 조회로 page-level `allowed_users`/`allowed_groups` 매핑. page-level restriction이 비어 있는 경우 상위 folder/page/space permission 처리 정책 필요.
 
 ## Milestone B — Ingestion 파이프라인
 

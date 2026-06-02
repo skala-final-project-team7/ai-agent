@@ -12,15 +12,18 @@
 변경사항 내역 (날짜, 변경목적, 변경내용 순)
   - 2026-05-26, 최초 작성, featureI-6 — vendored Data Ingestion Agent in-process
     호출(run_full_crawl_workflow 블랙박스) + ProcessedDocument→PageObject 매핑 +
-    space_key 기반 PoC ACL 합성.
+    space_key 기반 PoC ACL 합성. 2026-06-02 Admin Key 실측으로 page-level read
+    restriction API 적용 가능성을 확인했으며, 운영 ACL 수집은 후속 작업으로 분리.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x (vendored 에이전트가 enum.StrEnum 사용)
   - vendored ``data_ingestion_agent`` 패키지(저장소 루트) 필요
 --------------------------------------------------
 [미해결 사항(추측 구현 금지 — docs/atlassian-api.md / docs/ai/current-plan.md)]
-  - ACL: 에이전트 MVP 는 ACL 을 산출하지 않는다(content restrictions API 미사용).
-    PoC 는 ``_synthesize_acl`` 로 space_key 기반 합성. 실연동은 팀(+RAG ACL 필터) 결정 대기.
+  - ACL: 에이전트 MVP 는 ACL 을 산출하지 않는다. PoC 는 ``_synthesize_acl`` 로
+    space_key 기반 합성. 운영 Confluence/Admin Key 경로는
+    ``/rest/api/content/{pageId}/restriction/byOperation/read`` 조회 결과를
+    ``allowed_users``/``allowed_groups`` 로 매핑하는 후속 작업이 필요하다.
   - labels / ancestors / attachments: 에이전트 MVP 미산출(첨부는 not_supported_in_mvp).
     어댑터는 빈 값으로 매핑하고, 채워지는 시점은 후속 feature 로 남긴다.
   - access_token / cloud_id 전달 경로(Auth Server→BFF→Ingestion): 미확정. 호출자가
@@ -172,7 +175,8 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
             page.version_number     → version_number
             page.last_modified_at   → last_modified (ISO 8601 파싱)
             page.page_url           → webui_link
-            (없음)                  → allowed_groups/allowed_users (PoC 합성)
+            restriction API         → allowed_groups/allowed_users (운영 후속)
+            (현재 구현)             → allowed_groups/allowed_users (PoC 합성)
             (MVP 미산출)            → labels=[] / ancestors=[] / attachments=[]
         """
         space_key = document.space.space_key
@@ -195,8 +199,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
     def _synthesize_acl(self, space_key: str) -> tuple[list[str], list[str]]:
         """PoC ACL 합성 — space_key 기반 그룹(JsonFixtureSourceAdapter 패턴 동일).
 
-        실 ACL 연동(content restrictions vs space 접근권한) 결정 시 본 메서드만 교체한다
-        (docs/db-schema.md §1.4 미해결 사항 — RAG 검색 ACL 필터와 공유 계약).
+        운영 ACL 연동 시 Admin Key + read restriction 조회 결과로 본 메서드를 교체한다.
+        page-level restriction 이 비어 있는 경우 상위 folder/page/space permission 처리 정책이
+        필요하다(docs/db-schema.md §1.4, ADR 0003).
         """
         return synthesize_space_acl(space_key)
 
@@ -205,7 +210,8 @@ def synthesize_space_acl(space_key: str) -> tuple[list[str], list[str]]:
     """PoC ACL 합성(space_key 기반) — Full Crawl·Delta Sync 어댑터가 공유한다.
 
     에이전트 MVP 가 ACL 을 산출하지 않으므로 ``["space:{space_key}"]`` 그룹으로 합성한다.
-    실 ACL 연동 결정 시 이 함수만 교체한다(RAG 검색 ACL 필터와 공유 계약).
+    운영 ACL 연동 결정 시 이 함수/호출부를 page-level ACL 수집으로 교체한다
+    (RAG 검색 ACL 필터와 공유 계약).
     """
     return [f"space:{space_key}"], []
 

@@ -100,10 +100,14 @@ PoC 어댑터 (본 저장소 구현 대상):
 > `allowed_groups`·`allowed_users`가 모두 비면 '공개 문서'가 아닌 **ACL 누락 오류**로 간주,
 > `INVALID_ACL`로 색인 스킵(보안 안전 측 정책). 첨부는 부모 페이지 ACL 상속.
 
-> **⚠ ACL 미해결 사항** — 설계서는 ACL을 청크별 `allowed_groups`/`allowed_users` Payload로
-> 정의하지만, 제공된 Atlassian API 명세에는 페이지 단위 권한 API가 없고 Space 단위 권한(`DATA-03`)만
-> 있다. 샘플 데이터에도 ACL 필드가 없다. PoC ACL을 `space_key` 기반으로 할지, content restrictions
-> API를 추가 도입할지 **팀 결정 필요**. 상세: `docs/atlassian-api.md`, `docs/db-schema.md`.
+> **ACL 적용 정책** — 검색 계층은 `allowed_groups OR allowed_users` payload를 항상 ACL 필터로
+> 사용한다. PoC/샘플 경로는 `allowed_groups=["space:{space_key}"]`로 합성한다. 2026-06-02
+> Admin Key 실측으로 Confluence page-level read restriction 조회가 가능함을 확인했으므로,
+> 운영 Confluence ingestion은 `/rest/api/content/{pageId}/restriction/byOperation/read` 결과를
+> `allowed_users` / `allowed_groups`로 매핑하는 방향으로 전환한다. page-level restriction이
+> 비어 있어도 상위 folder/page 또는 space permission으로 접근이 막힐 수 있으므로, 상위 권한
+> 계층 처리 정책은 후속 구현에서 정의한다. 상세: `docs/atlassian-api.md`, `docs/db-schema.md`,
+> `docs/adr/0003-ingestion-rag-shared-contracts.md`.
 
 ### 7.2 Chunk 메타데이터
 

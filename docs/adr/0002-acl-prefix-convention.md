@@ -2,6 +2,7 @@
 
 - 상태: 채택
 - 날짜: 2026-05-17
+- 개정: 2026-06-02 — Admin Key 실측 이후 PoC/space fallback 컨벤션으로 범위 명확화
 - 작성자: 최태성
 
 ## 배경
@@ -39,7 +40,10 @@ working-log 2026-05-15 feature2 비고).
 
 ### C. content restrictions API로 페이지별 사용자·그룹 채집
 
-- 설계서 원안. PoC API 명세에 없어 보류 — 운영 전환 시 재검토.
+- 설계서 원안. 2026-06-02 Admin Key 테스트에서
+  `/rest/api/content/{pageId}/restriction/byOperation/read`로 page-level read restriction 조회가
+  가능함을 확인했다. 운영 Confluence 수집은 ADR 0003 개정에 따라 이 방향을 후속 목표로 둔다.
+  다만 PoC/샘플 데이터와 space permission fallback에는 `space:{key}` prefix가 계속 필요하다.
 
 ## 결정
 
@@ -50,19 +54,20 @@ working-log 2026-05-15 feature2 비고).
   채운다. 예: 사용자가 CLOUD·CCC 스페이스 접근 가능 → `groups=["space:CLOUD","space:CCC"]`.
 - 이 컨벤션은 `JsonFixtureSourceAdapter._synthesize_acl`과 `examples/demo_search.py`가
   암묵적으로 따르던 것을 명시적으로 동결한 것이다.
-- `AtlassianSourceAdapter` 구현 시(feature2 잔여, current-plan) `DATA-03` 응답 매핑이 이
-  컨벤션을 따른다.
-- 향후 content restrictions API 도입으로 페이지별 `allowed_users`/`allowed_groups`를 채울
-  경우, `build_acl_filter`만 교체하고 `space:` prefix는 그대로 유지하거나 별도 ADR로
-  변경한다.
+- PoC/샘플/space fallback 경로는 이 컨벤션을 따른다.
+- 운영 Confluence path가 page-level restriction으로 `allowed_users` / `allowed_groups`를 채워도,
+  restriction이 없거나 space-level fallback이 필요한 경우 `space:{key}` group을 함께 사용할 수 있다.
+  단, 실제 Confluence group restriction 값과 BFF JWT `groups` claim의 매핑 방식은 별도 합의가 필요하다.
 
 ## 영향
 
 - 수정 파일: 없음(기존 구현이 이미 `space:` prefix를 사용함 — 본 ADR은 그것을 동결).
 - 후속 작업:
-  - `AtlassianSourceAdapter` 구현 시 `DATA-03` 응답 매핑에서 `space:` prefix 부착.
-  - BFF 담당자 협의 — JWT `groups` 클레임 형식 동결. `docs/api-spec.md`의 JWT 클레임
-    예시도 `groups=["space:..."]`로 갱신할지 결정.
+  - PoC/샘플 경로는 계속 `space:{key}` prefix를 사용한다.
+  - 운영 page-level ACL 도입 시 `allowed_users`에는 Confluence `accountId`, `allowed_groups`에는
+    backend가 JWT `groups` claim으로 전달할 수 있는 안정 식별자를 넣는다.
+  - BFF 담당자 협의 — JWT `groups` 클레임에 `space:{key}` fallback과 Confluence group restriction
+    값을 어떤 형태로 함께 싣는지 결정.
 - 다른 담당자 영역: BFF/Authorization Server 담당자가 본 ADR을 인지해야 한다.
 
 ## 함께 수정한 문서
