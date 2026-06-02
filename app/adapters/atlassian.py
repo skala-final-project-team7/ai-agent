@@ -36,6 +36,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -52,6 +53,36 @@ class _WorkflowRunner(Protocol):
 
     def __call__(self, *, config: Any, client: Any | None = None) -> Any:
         """Full crawl workflow 를 실행하고 ``.documents`` 를 가진 결과를 반환한다."""
+
+
+class PageAclProvider(Protocol):
+    """페이지별 ACL을 반환하는 provider seam."""
+
+    def get_page_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
+        """allowed_groups, allowed_users를 반환한다."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConfluenceRestrictionAclProvider:
+    """Confluence read restriction 응답을 PageObject ACL payload로 변환한다.
+
+    Empty restriction은 곧 "공개"를 의미한다고 단정할 수 없다. Admin Key 실측에서
+    page-level restriction이 비어도 상위 folder/page/space 권한 때문에 일반 조회가 막히는
+    사례가 확인됐다. 따라서 기본 정책은 빈 ACL을 반환해 후속 ACL gate가 색인을 차단하게 한다.
+    """
+
+    client: Any
+    empty_restriction_policy: str = "mark_missing"  # mark_missing | space_fallback
+
+    def get_page_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
+        raw = self.client.get_page_read_restrictions(page_id)
+        allowed_groups, allowed_users = parse_read_restrictions_acl(raw)
+        if allowed_groups or allowed_users:
+            return allowed_groups, allowed_users
+        if self.empty_restriction_policy == "space_fallback":
+            return synthesize_space_acl(space_key)
+        return [], []
 
 
 class AtlassianSourceAdapter(DocumentSourceAdapter):
@@ -78,18 +109,22 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
         cloud_id: str,
         access_token: str,
         client: Any | None = None,
+        acl_provider: PageAclProvider | None = None,
         workflow_runner: _WorkflowRunner | None = None,
         request_delay_seconds: float = 0.3,
         max_retries: int = 3,
         timeout_seconds: int = 20,
+        use_admin_key: bool = False,
     ) -> None:
         self._cloud_id = cloud_id
         self._access_token = access_token
         self._client = client
+        self._acl_provider = acl_provider
         self._workflow_runner = workflow_runner
         self._request_delay_seconds = request_delay_seconds
         self._max_retries = max_retries
         self._timeout_seconds = timeout_seconds
+        self._use_admin_key = use_admin_key
 
     @classmethod
     def from_settings(cls, settings: Settings) -> AtlassianSourceAdapter:
@@ -98,12 +133,26 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
         access_token/cloud_id 전달 경로가 확정되기 전 PoC placeholder 다. 자격증명이
         비어 있으면 실행 시 vendored 에이전트의 config 검증에서 실패한다.
         """
+        acl_provider = None
+        if settings.atlassian_use_admin_key:
+            acl_provider = ConfluenceRestrictionAclProvider(
+                client=_default_confluence_client(
+                    cloud_id=settings.atlassian_cloud_id,
+                    access_token=settings.atlassian_access_token.get_secret_value(),
+                    request_delay_seconds=settings.atlassian_request_delay_seconds,
+                    max_retries=settings.atlassian_max_retries,
+                    timeout_seconds=settings.atlassian_timeout_seconds,
+                    use_admin_key=settings.atlassian_use_admin_key,
+                )
+            )
         return cls(
             cloud_id=settings.atlassian_cloud_id,
             access_token=settings.atlassian_access_token.get_secret_value(),
+            acl_provider=acl_provider,
             request_delay_seconds=settings.atlassian_request_delay_seconds,
             max_retries=settings.atlassian_max_retries,
             timeout_seconds=settings.atlassian_timeout_seconds,
+            use_admin_key=settings.atlassian_use_admin_key,
         )
 
     # --- DocumentSourceAdapter 인터페이스 ---
@@ -162,6 +211,7 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
             request_delay_seconds=self._request_delay_seconds,
             max_retries=self._max_retries,
             timeout_seconds=self._timeout_seconds,
+            use_admin_key=self._use_admin_key,
         )
 
     def _to_page_object(self, document: Any) -> PageObject:
@@ -180,7 +230,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
             (MVP 미산출)            → labels=[] / ancestors=[] / attachments=[]
         """
         space_key = document.space.space_key
-        allowed_groups, allowed_users = self._synthesize_acl(space_key)
+        allowed_groups, allowed_users = self._resolve_acl(
+            page_id=document.page.page_id, space_key=space_key
+        )
         return PageObject(
             page_id=document.page.page_id,
             space_key=space_key,
@@ -205,6 +257,56 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
         """
         return synthesize_space_acl(space_key)
 
+    def _resolve_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
+        if self._acl_provider is None:
+            return self._synthesize_acl(space_key)
+        return self._acl_provider.get_page_acl(page_id=page_id, space_key=space_key)
+
+
+def parse_read_restrictions_acl(raw: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Confluence read restriction 응답에서 allowed_groups/users를 추출한다."""
+    restrictions = raw.get("restrictions")
+    if not isinstance(restrictions, dict):
+        return [], []
+
+    group_results = _restriction_results(restrictions.get("group"))
+    user_results = _restriction_results(restrictions.get("user"))
+    groups = [_group_acl_value(group) for group in group_results]
+    users = [
+        str(user.get("accountId")).strip()
+        for user in user_results
+        if isinstance(user.get("accountId"), str) and str(user.get("accountId")).strip()
+    ]
+    return _dedupe_non_empty(groups), _dedupe_non_empty(users)
+
+
+def _restriction_results(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, dict):
+        return []
+    results = value.get("results")
+    if not isinstance(results, list):
+        return []
+    return [item for item in results if isinstance(item, dict)]
+
+
+def _group_acl_value(group: dict[str, Any]) -> str:
+    for key in ("id", "groupId", "name"):
+        value = group.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _dedupe_non_empty(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            deduped.append(normalized)
+    return deduped
+
 
 def synthesize_space_acl(space_key: str) -> tuple[list[str], list[str]]:
     """PoC ACL 합성(space_key 기반) — Full Crawl·Delta Sync 어댑터가 공유한다.
@@ -226,6 +328,30 @@ def _default_workflow_runner() -> _WorkflowRunner:
 
     runner: _WorkflowRunner = run_full_crawl_workflow
     return runner
+
+
+def _default_confluence_client(
+    *,
+    cloud_id: str,
+    access_token: str,
+    request_delay_seconds: float,
+    max_retries: int,
+    timeout_seconds: int,
+    use_admin_key: bool,
+) -> Any:
+    from data_ingestion_agent.config import DataIngestionConfig
+    from data_ingestion_agent.confluence import ConfluenceClient
+
+    config = DataIngestionConfig(
+        cloud_id=cloud_id,
+        access_token=access_token,
+        output_dir=tempfile.gettempdir(),
+        request_delay_seconds=request_delay_seconds,
+        max_retries=max_retries,
+        timeout_seconds=timeout_seconds,
+        use_admin_key=use_admin_key,
+    )
+    return ConfluenceClient(config=config)
 
 
 def _parse_last_modified(value: str) -> datetime:

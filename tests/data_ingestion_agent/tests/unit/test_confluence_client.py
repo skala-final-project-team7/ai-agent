@@ -37,6 +37,7 @@ def _client(
     *,
     max_retries: int = 3,
     access_token: str | None = None,
+    use_admin_key: bool = False,
 ) -> tuple[ConfluenceClient, FakeTransport, str, str]:
     cloud_id = _runtime_value("cloud")
     access_token = access_token or _runtime_value("token")
@@ -46,6 +47,7 @@ def _client(
         output_dir=tmp_path,
         max_retries=max_retries,
         request_delay_seconds=0,
+        use_admin_key=use_admin_key,
     )
     transport = FakeTransport(responses)
     return (
@@ -59,10 +61,7 @@ def _client(
 def test_base_url_uses_injected_cloud_id(tmp_path: Path) -> None:
     client, _, cloud_id, _ = _client(tmp_path, [])
 
-    assert (
-        client.base_url
-        == f"https://api.atlassian.com/ex/confluence/{cloud_id}/wiki/api/v2"
-    )
+    assert client.base_url == f"https://api.atlassian.com/ex/confluence/{cloud_id}/wiki/api/v2"
 
 
 def test_authorization_header_is_sent_but_redacted_from_errors(
@@ -86,6 +85,27 @@ def test_authorization_header_is_sent_but_redacted_from_errors(
     assert transport.requests[0].headers["Authorization"] == f"Bearer {access_token}"
     assert access_token not in str(raised_error.value)
     assert "Authorization" not in str(raised_error.value)
+
+
+def test_admin_key_header_is_sent_when_enabled(tmp_path: Path) -> None:
+    client, transport, _, _ = _client(
+        tmp_path,
+        [ConfluenceResponse(status_code=200, json_body={"results": [], "_links": {}})],
+        use_admin_key=True,
+    )
+
+    assert client.list_spaces() == []
+    assert transport.requests[0].headers["Atl-Confluence-With-Admin-Key"] == "true"
+
+
+def test_admin_key_header_is_omitted_by_default(tmp_path: Path) -> None:
+    client, transport, _, _ = _client(
+        tmp_path,
+        [ConfluenceResponse(status_code=200, json_body={"results": [], "_links": {}})],
+    )
+
+    assert client.list_spaces() == []
+    assert "Atl-Confluence-With-Admin-Key" not in transport.requests[0].headers
 
 
 def test_list_spaces_follows_next_pagination(tmp_path: Path) -> None:
@@ -135,12 +155,8 @@ def test_list_page_descendants_follows_next_pagination(tmp_path: Path) -> None:
     descendants = client.list_page_descendants(homepage_id)
 
     assert descendants == [{"id": "page-1"}, {"id": "page-2"}]
-    assert transport.requests[0].url.endswith(
-        f"/pages/{homepage_id}/descendants?limit=25"
-    )
-    assert transport.requests[1].url.endswith(
-        f"/pages/{homepage_id}/descendants?cursor=2"
-    )
+    assert transport.requests[0].url.endswith(f"/pages/{homepage_id}/descendants?limit=25")
+    assert transport.requests[1].url.endswith(f"/pages/{homepage_id}/descendants?cursor=2")
 
 
 def test_get_page_detail_requests_storage_body_and_version(
@@ -163,6 +179,31 @@ def test_get_page_detail_requests_storage_body_and_version(
     assert transport.requests[0].url.endswith(
         f"/pages/{page_id}?body-format=storage&include-version=true"
     )
+
+
+def test_get_page_read_restrictions_uses_content_restriction_endpoint(
+    tmp_path: Path,
+) -> None:
+    page_id = _runtime_value("page")
+    client, transport, cloud_id, _ = _client(
+        tmp_path,
+        [
+            ConfluenceResponse(
+                status_code=200,
+                json_body={"operation": "read", "restrictions": {}},
+            )
+        ],
+        use_admin_key=True,
+    )
+
+    restrictions = client.get_page_read_restrictions(page_id)
+
+    assert restrictions["operation"] == "read"
+    assert transport.requests[0].url == (
+        "https://api.atlassian.com/ex/confluence/"
+        f"{cloud_id}/wiki/rest/api/content/{page_id}/restriction/byOperation/read"
+    )
+    assert transport.requests[0].headers["Atl-Confluence-With-Admin-Key"] == "true"
 
 
 def test_rate_limit_retries_then_succeeds(tmp_path: Path) -> None:

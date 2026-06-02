@@ -12,10 +12,15 @@ OAuth 인증·access_token 관리는 Authorization Server(Spring) 책임이며, 
 - base.py          DocumentSourceAdapter 추상 인터페이스 + ActiveIds / ChangeEvent
 - json_fixture.py  JsonFixtureSourceAdapter — samples/*.json 읽기 (로컬 개발·테스트용) [구현 완료]
 - factory.py       build_source_adapter — Settings.source_type 기반 어댑터 생성 [구현 완료]
-- atlassian.py     AtlassianSourceAdapter — atlassian-python-api로 Confluence REST 직접 호출
-                   [미구현 — access_token/cloudid 전달 경로 확정 후. docs/ai/current-plan.md]
+- atlassian.py     AtlassianSourceAdapter — vendored Data Ingestion Agent workflow 연결 +
+                   Confluence read restriction ACL provider seam
 """
 
+from app.adapters.atlassian import (
+    AtlassianSourceAdapter,
+    ConfluenceRestrictionAclProvider,
+    parse_read_restrictions_acl,
+)
 from app.adapters.base import ActiveIds, ChangeEvent, DocumentSourceAdapter
 from app.adapters.factory import (
     MissingAtlassianCredentialsError,
@@ -26,10 +31,13 @@ from app.adapters.json_fixture import JsonFixtureSourceAdapter
 
 __all__ = [
     "ActiveIds",
+    "AtlassianSourceAdapter",
     "ChangeEvent",
+    "ConfluenceRestrictionAclProvider",
     "DocumentSourceAdapter",
     "JsonFixtureSourceAdapter",
     "MissingAtlassianCredentialsError",
     "UnsupportedSourceTypeError",
     "build_source_adapter",
+    "parse_read_restrictions_acl",
 ]

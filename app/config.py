@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     atlassian_request_delay_seconds: float = 0.3
     atlassian_max_retries: int = 3
     atlassian_timeout_seconds: int = 20
+    # True면 Confluence API 요청에 Atl-Confluence-With-Admin-Key header를 포함한다.
+    # Admin Key 활성화/만료 자체는 backend/infra 운영 영역이며, 본 설정은 활성화된
+    # Admin Key를 사용하는 호출임을 명시하는 header만 제어한다.
+    atlassian_use_admin_key: bool = False
     # Delta Sync 가 비교할 이전 snapshot 경로. 실제 운영에서는 공유 저장소/Mongo 기반 snapshot
     # repository 로 교체될 수 있으나, 현재 vendored Data Sync Agent 계약은 파일 경로를 요구한다.
     data_sync_previous_snapshot: str = "data/snapshots/latest_snapshot.json"

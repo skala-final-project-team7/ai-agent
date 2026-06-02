@@ -10,7 +10,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from app.adapters.atlassian import AtlassianSourceAdapter
+from app.adapters.atlassian import (
+    AtlassianSourceAdapter,
+    ConfluenceRestrictionAclProvider,
+    parse_read_restrictions_acl,
+)
 from app.adapters.json_fixture import parse_atlassian_datetime
 
 
@@ -36,6 +40,23 @@ class _FakeConfluenceClient:
 
     def get_page_detail(self, page_id: str) -> dict[str, Any]:
         return self.details_by_page[page_id]
+
+
+class _FakeAclProvider:
+    def get_page_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
+        assert page_id == "page-001"
+        assert space_key == "ENG"
+        return ["frontend-team"], ["712020:user-1"]
+
+
+class _FakeRestrictionClient:
+    def __init__(self, raw: dict[str, Any]) -> None:
+        self.raw = raw
+        self.requested_page_ids: list[str] = []
+
+    def get_page_read_restrictions(self, page_id: str) -> dict[str, Any]:
+        self.requested_page_ids.append(page_id)
+        return self.raw
 
 
 def _space() -> dict[str, Any]:
@@ -99,6 +120,26 @@ def test_fetch_pages_synthesizes_space_acl_and_empty_mvp_fields() -> None:
     assert page.attachments == []
 
 
+def test_fetch_pages_uses_injected_acl_provider() -> None:
+    client = _FakeConfluenceClient(
+        spaces=[_space()],
+        descendants_by_homepage={"home-001": [_page_ref()]},
+        details_by_page={"page-001": _page_detail()},
+    )
+    adapter = AtlassianSourceAdapter(
+        cloud_id="cloud-synthetic",
+        access_token="token-synthetic",
+        client=client,
+        acl_provider=_FakeAclProvider(),
+        request_delay_seconds=0,
+    )
+
+    page = next(iter(adapter.fetch_pages()))
+
+    assert page.allowed_groups == ["frontend-team"]
+    assert page.allowed_users == ["712020:user-1"]
+
+
 def test_fetch_pages_since_filter_excludes_older_pages() -> None:
     future = datetime.fromisoformat("2030-01-01T00:00:00+00:00")
     assert list(_adapter().fetch_pages(since=future)) == []
@@ -113,3 +154,57 @@ def test_list_active_ids_returns_page_ids_without_attachments() -> None:
 
 def test_watch_changes_is_empty_stream() -> None:
     assert list(_adapter().watch_changes()) == []
+
+
+def test_parse_read_restrictions_acl_maps_groups_and_users() -> None:
+    raw = {
+        "operation": "read",
+        "restrictions": {
+            "group": {
+                "results": [
+                    {"id": "group-id-1", "name": "frontend"},
+                    {"name": "fallback-name"},
+                    {"id": "group-id-1", "name": "duplicated"},
+                ]
+            },
+            "user": {
+                "results": [
+                    {"accountId": "712020:user-1", "displayName": "신유진"},
+                    {"accountId": "712020:user-2", "displayName": "sunny"},
+                    {"accountId": "712020:user-1", "displayName": "duplicate"},
+                ]
+            },
+        },
+    }
+
+    groups, users = parse_read_restrictions_acl(raw)
+
+    assert groups == ["group-id-1", "fallback-name"]
+    assert users == ["712020:user-1", "712020:user-2"]
+
+
+def test_confluence_restriction_acl_provider_marks_empty_restriction_missing() -> None:
+    client = _FakeRestrictionClient(
+        {"operation": "read", "restrictions": {"group": {"results": []}, "user": {"results": []}}}
+    )
+    provider = ConfluenceRestrictionAclProvider(client=client)
+
+    groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
+
+    assert groups == []
+    assert users == []
+    assert client.requested_page_ids == ["page-001"]
+
+
+def test_confluence_restriction_acl_provider_can_fallback_to_space_acl() -> None:
+    client = _FakeRestrictionClient(
+        {"operation": "read", "restrictions": {"group": {"results": []}, "user": {"results": []}}}
+    )
+    provider = ConfluenceRestrictionAclProvider(
+        client=client, empty_restriction_policy="space_fallback"
+    )
+
+    groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
+
+    assert groups == ["space:ENG"]
+    assert users == []
