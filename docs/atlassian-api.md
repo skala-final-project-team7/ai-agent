@@ -27,6 +27,10 @@ export CONF_BASE_URL="https://<site>.atlassian.net/wiki"
 export ATLASSIAN_EMAIL="<admin-email>"
 export ATLASSIAN_API_TOKEN="<atlassian-api-token>"
 
+echo "$CONF_BASE_URL"
+echo "$ATLASSIAN_EMAIL"
+echo ${#ATLASSIAN_API_TOKEN}
+
 python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<restricted-page-id>"
 ```
 
@@ -39,8 +43,12 @@ python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<restrict
 - `/rest/api/content/{pageId}/restriction/byOperation/read`의 user/group restriction 개수
 
 이 스크립트는 read-only 확인 도구다. Admin Key 발급/말소는 수행하지 않는다. 운영 경로에서는
-BFF/Auth Server가 OAuth access token과 Admin Key 수명주기를 관리하고, ML은 BFF가 전달한
-OAuth access token을 사용한다.
+BFF/Auth Server가 OAuth access token과 Admin Key 수명주기를 관리하고, Data Ingestion Worker는
+`adminUserId`로 auth-server 내부 credential API를 호출해 admin OAuth access token과 `cloudId`를
+조회한다. RabbitMQ job/completion payload에는 credential set을 포함하지 않는다.
+
+실제 API Token 값은 문서·코드·커밋에 남기지 않는다. 회의/채팅/로그에 노출된 token은
+Atlassian에서 폐기하고 재발급한 뒤 환경변수로만 주입한다.
 
 ## 데이터 수집 API
 

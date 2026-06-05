@@ -138,8 +138,9 @@ python scripts/smoke_ingest_api.py
 
 FastAPI route 기준으로 `GET /ml/ingest/health` → `POST /ml/ingest` → `GET
 /ml/ingest/status/{jobId}`를 실행한다. 기본값은 `json_fixture` + fake/in-memory adapter라
-Confluence, Qdrant, MongoDB, OpenAI, BFF callback 없이 동작한다. 실 Confluence/Admin Key
-수집 smoke는 운영 자격증명과 BFF callback URL을 주입한 별도 환경에서 수행한다.
+Confluence, Qdrant, MongoDB, OpenAI, RabbitMQ completion event 없이 동작한다. 실
+Confluence/Admin Key 수집 smoke는 운영 자격증명과 RabbitMQ/credential lookup 구성을 주입한
+별도 환경에서 수행한다.
 
 ### Smoke — 임시 Confluence Basic Auth/Admin Key
 
@@ -152,12 +153,17 @@ export CONF_BASE_URL="https://<site>.atlassian.net/wiki"
 export ATLASSIAN_EMAIL="<admin-email>"
 export ATLASSIAN_API_TOKEN="<atlassian-api-token>"
 
+echo "$CONF_BASE_URL"
+echo "$ATLASSIAN_EMAIL"
+echo ${#ATLASSIAN_API_TOKEN}
+
 python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<page-id>"
 ```
 
 출력은 일반 조회 page 수, Admin Key header 조회 page 수, Admin Key에서만 보이는 page id,
 sample page의 일반/Admin Key 조회 HTTP status, read restriction user/group 수를 요약한다.
-토큰 값은 출력하지 않으며 Admin Key 말소도 수행하지 않는다.
+토큰 값은 출력하지 않으며 Admin Key 말소도 수행하지 않는다. 실제 API Token 값은 문서나
+커밋에 남기지 않는다. 노출된 토큰은 Atlassian에서 즉시 폐기하고 재발급한다.
 
 ---
 
@@ -169,11 +175,10 @@ sample page의 일반/Admin Key 조회 HTTP status, read restriction user/group 
 - **Qdrant** — Multi-Pool Vector Store (`title_pool` / `content_pool` / `label_pool`)
 - **MongoDB** — `ingest_job_status` · `ingestion_jobs` · `embedding_cache` · `chunk_lookup`
 - **MySQL** — `space_doc_type_cache`
-- **RabbitMQ** — attachment/chunking worker queue
+- **RabbitMQ** — attachment/chunking worker queue, ingestion completion event
 - **Confluence/Atlassian API** — 실 수집 source
 - **OpenAI API** — 운영 LLM provider
-- **BFF callback** — 수집 job 종료 후 Admin Key revoke 요청
-  (`RAG_BFF_ADMIN_KEY_REVOKE_URL`, 미설정 시 no-op)
+- **BFF/Auth Server** — RabbitMQ completion event consume 후 Admin Key deactivate 처리
 
 스키마 상세는 [`docs/db-schema.md`](docs/db-schema.md).
 

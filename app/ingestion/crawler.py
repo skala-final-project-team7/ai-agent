@@ -56,7 +56,10 @@ class CrawlRequest:
     # api-spec v2.4.0: /ml/ingest 는 스페이스 스코프 없이 전체 수집한다. 내부 스케줄러가
     # 단일 스페이스 재색인을 수행할 때만 값을 넣는다.
     space_key: str = ""
-    # PoC: BFF→Ingestion 전달(미확정 TBD). 로그·메시지 페이로드에 남기지 않는다.
+    # api-spec v2.5.0 preferred: Data Ingestion Worker 가 auth-server 내부 credential API 를
+    # 호출할 때 사용할 admin 식별자. credential 자체가 아니므로 completion event 에 포함 가능.
+    admin_user_id: str | None = None
+    # Legacy PoC: BFF→Ingestion 직접 전달. 로그·메시지 페이로드에 남기지 않는다.
     access_token: str | None = None
     cloud_id: str | None = None
 

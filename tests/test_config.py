@@ -94,6 +94,7 @@ def test_bff_admin_key_revoke_settings_defaults() -> None:
     assert settings.bff_admin_key_revoke_url == ""
     assert settings.bff_admin_key_revoke_token.get_secret_value() == ""
     assert settings.bff_admin_key_revoke_timeout_seconds == 5.0
+    assert settings.ingest_completion_routing_key == "ingestion.completed"
 
 
 def test_bff_admin_key_revoke_settings_env_override(
