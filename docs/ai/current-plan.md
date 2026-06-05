@@ -939,4 +939,8 @@ BE 통합 API 스펙 수신(`api-spec-BE-adjust.md`, 2026-05-21). PDF #2(API Spe
   보낸다. 실제 BFF endpoint URL/인증 토큰 값은 backend 배포 설정에서 주입 필요.
 - **Local ingestion smoke**: `scripts/smoke_ingest_api.py` 추가. `json_fixture` + fake/in-memory
   adapter로 `/ml/ingest` route를 통과해 샘플 92페이지 `COMPLETED`/실패 0건을 확인했다.
+- **임시 Confluence Basic Auth smoke**: backend OAuth 완료 전 실제 Confluence/Admin Key 동작을
+  확인하기 위해 `scripts/smoke_confluence_basic.py`를 추가한다. 이 스크립트는 production
+  adapter가 아니며, API Token Basic Auth로 `/api/v2/pages` 일반/Admin Key 조회 차이와
+  `restriction/byOperation/read` 응답 shape만 read-only로 확인한다.
 - **외부 협의 대기**: feature13 PDF #3 (BE 명세), BFF revoke callback endpoint 확정, worker 운영 위치

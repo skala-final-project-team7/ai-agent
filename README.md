@@ -141,6 +141,24 @@ FastAPI route 기준으로 `GET /ml/ingest/health` → `POST /ml/ingest` → `GE
 Confluence, Qdrant, MongoDB, OpenAI, BFF callback 없이 동작한다. 실 Confluence/Admin Key
 수집 smoke는 운영 자격증명과 BFF callback URL을 주입한 별도 환경에서 수행한다.
 
+### Smoke — 임시 Confluence Basic Auth/Admin Key
+
+백엔드 OAuth가 준비되기 전 실제 Confluence 응답 형식과 Admin Key ACL 조회 가능성을 확인하는
+임시 smoke다. production ingestion 경로는 OAuth access token을 사용하므로, 이 스크립트는 운영
+adapter와 분리된 확인 도구로만 사용한다.
+
+```bash
+export CONF_BASE_URL="https://<site>.atlassian.net/wiki"
+export ATLASSIAN_EMAIL="<admin-email>"
+export ATLASSIAN_API_TOKEN="<atlassian-api-token>"
+
+python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<page-id>"
+```
+
+출력은 일반 조회 page 수, Admin Key header 조회 page 수, Admin Key에서만 보이는 page id,
+sample page의 일반/Admin Key 조회 HTTP status, read restriction user/group 수를 요약한다.
+토큰 값은 출력하지 않으며 Admin Key 말소도 수행하지 않는다.
+
 ---
 
 ## 외부 서비스
