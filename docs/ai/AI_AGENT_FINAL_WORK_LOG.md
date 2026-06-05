@@ -4,6 +4,7 @@
 작업 루트: `/Users/younghoonlee/workspace_git`  
 최종 대상 레포: `/Users/younghoonlee/workspace_git/ai-agent`  
 최종 기준 브랜치: `main`
+최근 갱신: 2026-06-05, backend api-spec v2.5.0 회의 결과 반영
 
 ## 1. 문서 목적
 
@@ -62,9 +63,11 @@
 - backend/frontend 최신 API 계약 반영:
   - api-spec v2.3.0 반영
   - api-spec v2.4.0 반영
+  - api-spec v2.5.0 반영 시작
   - `spaceKey` 제거
   - cross-space search + ACL filter 구조
-  - Admin Key revoke는 ML 직접 말소가 아니라 BFF callback 요청 방식으로 확정
+  - Admin Key revoke는 ML 직접 말소가 아니며, 최신 결정은 RabbitMQ completion event 기반
+    BFF/Auth Server deactivate 방식
 - smoke/검증 도구 추가:
   - local `/ml/ingest` smoke
   - 임시 Confluence Basic Auth/Admin Key smoke
@@ -767,9 +770,9 @@ b3cf7bc Update documentation for document analyzer integration
 
 - 실제 graph에 document analyzer가 연결된 상태를 문서에 반영
 
-## 12. Admin Key revoke BFF callback
+## 12. Admin Key revoke 흐름 변경 이력
 
-최종 결정:
+v2.4 시점 결정:
 
 - ML이 Atlassian Admin Key를 직접 말소하지 않는다.
 - ML은 ingestion job이 terminal 상태에 도달하면 BFF에 revoke 요청 callback을 보낸다.
@@ -818,6 +821,161 @@ Ruff: All checks passed
 - BFF가 추가 식별자(`adminUserId`, `connectionId` 등)를 요구하는지 여부
 - retry queue/alerting 정책
 
+### 12.1 v2.5.0 갱신 — RabbitMQ completion event 방식
+
+2026-06-05 backend 최신 문서(`backend-template/docs/api-spec.md` v2.5.0,
+`docs/adr/0001-page-level-acl-source.md`) 기준으로 위 HTTP callback 방식은 최신 운영 방향이
+아니다. 최신 결정은 다음과 같다.
+
+- BFF polling watcher와 ML -> BFF HTTP revoke callback 방식은 RabbitMQ completion event로 대체한다.
+- BFF 또는 Data Ingestion Pipeline이 발행하는 ingest job payload에는 `jobId`, `adminUserId`,
+  `mode`, `requestedAt` 등 식별 정보만 포함한다.
+- RabbitMQ job/completion payload에는 `accessToken`, `refreshToken`, `cloudId`를 포함하지 않는다.
+- Data Ingestion Worker는 job consume 후 `adminUserId`로 auth-server 내부 credential API를 호출해
+  admin OAuth `accessToken` + `cloudId`를 조회한다.
+- Data Ingestion Worker는 Confluence 호출 시 `Authorization: Bearer {admin accessToken}` +
+  `Atl-Confluence-With-Admin-Key: true` header를 사용한다.
+- 수집 완료/실패 시 ML/Data Ingestion은 completion event를 발행한다.
+- BFF consumer가 completion event를 consume하고 auth-server
+  `POST /internal/admin/key/deactivate`를 호출한다.
+- deactivate 대상은 OAuth token이 아니라 Atlassian Admin Key 활성 상태다.
+- completion event는 `jobId` 기준 idempotent하게 처리해야 한다.
+
+ai-agent 반영 방향:
+
+- `/ml/ingest` request에 `adminUserId`를 preferred 식별자로 추가한다.
+- 기존 `accessToken`/`cloudId` optional 필드는 backend OAuth/RabbitMQ가 완성되기 전 local/PoC
+  호환용 legacy 필드로만 유지한다.
+- terminal 상태 처리에서 HTTP revoke callback 대신 credential 없는 completion event seam을 사용한다.
+- 기존 `app/api/admin_key_revoke.py`와 `tests/api/test_admin_key_revoke.py`는 최신 경로에서 제거한다.
+- 기존 `RAG_BFF_ADMIN_KEY_REVOKE_URL` 계열 설정은 deprecated compatibility로만 남긴다.
+
+### 12.2 v2.5.0 ai-agent 실제 반영 작업
+
+작업 브랜치:
+
+```text
+feat/api-spec-v2-5-ingest-completion
+```
+
+작업 배경:
+
+- backend 담당자의 최신 작업물(`/Users/younghoonlee/workspace_git/backend-template`)을 확인한 결과
+  API 문서 버전이 v2.5.0으로 갱신되어 있었다.
+- v2.5.0의 핵심 변경은 Admin Key 말소 흐름이 기존 BFF polling watcher 또는 ML HTTP callback이
+  아니라 RabbitMQ completion event 기반으로 바뀐 것이다.
+- 또한 `/ml/ingest` 또는 RabbitMQ job payload에 `accessToken`/`refreshToken`/`cloudId` 같은
+  Confluence credential set을 포함하지 않고, Data Ingestion Worker가 `adminUserId`로 auth-server
+  내부 credential 조회 API를 호출하는 것이 최신 원칙이다.
+- 회의 중 공유된 Atlassian API Token은 실제 secret이므로 코드/문서/커밋에 남기지 않았다. 해당
+  token은 노출된 것으로 보고 Atlassian에서 폐기 후 재발급해야 한다.
+
+추가한 파일:
+
+- `app/api/ingest_completion.py`
+  - `IngestCompletionEvent`
+  - `IngestCompletionPublisher`
+  - `NoopIngestCompletionPublisher`
+  - `QueueIngestCompletionPublisher`
+  - `publish_ingest_completion_safely()`
+  - completion event payload는 `jobId`, `adminUserId`, `mode`, `status`, `completedAt`,
+    `errorCode`, `message`만 포함한다.
+  - `accessToken`, `refreshToken`, `cloudId`는 의도적으로 포함하지 않는다.
+
+- `tests/api/test_ingest_completion.py`
+  - completion event payload에 credential이 없는지 검증.
+  - `QueueIngestCompletionPublisher`가 routing key와 payload를 `QueuePublisher`에 전달하는지 검증.
+  - no-op publisher와 publisher 실패 격리 동작 검증.
+
+삭제한 파일:
+
+- `app/api/admin_key_revoke.py`
+  - 기존 ML -> BFF HTTP revoke callback client.
+  - v2.5.0 정본 경로가 RabbitMQ completion event로 바뀌었으므로 제거했다.
+
+- `tests/api/test_admin_key_revoke.py`
+  - 제거된 HTTP callback client 테스트.
+
+수정한 주요 파일:
+
+- `app/api/ingest_routes.py`
+  - `IngestRequest`에 `adminUserId`를 추가했다.
+  - `accessToken`/`cloudId`는 legacy PoC/smoke 호환 필드로만 유지했다.
+  - full/delta job terminal 상태에서 `_publish_ingest_completion()`을 호출하도록 변경했다.
+  - completion event 발행 실패는 job terminal status를 덮어쓰지 않도록 안전하게 격리했다.
+
+- `app/api/ingest_deps.py`
+  - `admin_key_revoke_notifier` 의존성을 제거하고 `completion_publisher` 의존성을 추가했다.
+  - 기본값은 local/PoC 안전성을 위해 `NoopIngestCompletionPublisher()`다.
+  - 실제 RabbitMQ 발행 wiring은 infra/worker 운영 진입점에서 주입해야 한다.
+
+- `app/ingestion/crawler.py`
+  - `CrawlRequest.admin_user_id` 추가.
+  - credential이 아닌 관리자 식별자로 completion event에 포함 가능하다는 의미를 문서화했다.
+
+- `app/ingestion/sync.py`
+  - `DeltaSyncRequest.admin_user_id` 추가.
+
+- `app/config.py`
+  - `ingest_completion_routing_key="ingestion.completed"` 설정 추가.
+  - 기존 `bff_admin_key_revoke_*` 설정은 v2.5.0 기준 deprecated compatibility로 문서화했다.
+
+- `tests/api/test_ingest_route.py`
+  - full/delta 완료 시 BFF callback이 아니라 completion event가 발행되는지 검증하도록 수정.
+  - completion event payload에 `accessToken`/`cloudId`가 포함되지 않는지 검증.
+  - completion event 발행 실패가 job status를 덮어쓰지 않는지 검증.
+
+- `README.md`
+  - local ingestion smoke가 RabbitMQ completion event를 호출하지 않는다고 정정.
+  - 임시 Confluence Basic Auth smoke 절차에 환경변수 확인 명령을 추가.
+  - 실제 API Token 값은 문서/커밋에 남기지 않고, 노출 시 폐기/재발급해야 한다고 명시.
+
+- `docs/api-spec.md`
+  - `/ml/ingest`를 v2.5.0 기준으로 갱신.
+  - `adminUserId`를 preferred field로 명시.
+  - `accessToken`/`cloudId`는 legacy PoC-only field로 정리.
+  - Admin Key deactivate trigger를 RabbitMQ completion event로 정정.
+
+- `docs/atlassian-api.md`
+  - 임시 smoke는 read-only 확인 도구임을 유지.
+  - 운영 경로에서는 worker가 `adminUserId`로 auth-server 내부 credential API를 조회한다고 정정.
+  - 실제 API Token 값은 문서/코드/커밋에 남기지 않는다고 명시.
+
+- `docs/ai/current-plan.md`
+  - Admin Key 수명주기 최신 결정을 v2.5.0 RabbitMQ completion event 방식으로 갱신.
+
+검증 결과:
+
+```bash
+.venv/bin/python -m pytest tests/api/test_ingest_completion.py tests/api/test_ingest_route.py tests/test_config.py tests/scripts/test_smoke_ingest_api.py -q
+.venv/bin/ruff check app tests scripts
+.venv/bin/python -m pytest -q
+```
+
+결과:
+
+```text
+관련 테스트: 26 passed, 6 warnings
+Ruff: All checks passed
+전체 테스트: 1017 passed, 7 warnings
+```
+
+현재 호환성 판단:
+
+- backend api-spec v2.5.0의 문서/계약 방향과 정합한다.
+- credential을 RabbitMQ payload에 넣지 않는 보안 원칙과 정합한다.
+- ML이 Admin Key를 직접 말소하지 않는 책임 분리와 정합한다.
+- BFF/Auth Server가 deactivate를 수행하는 구조와 정합한다.
+- 단, 실제 운영 RabbitMQ publisher wiring과 auth-server 내부 credential 조회 client는 아직 후속 작업이다.
+  현재는 seam과 payload 계약을 먼저 맞춘 상태다.
+
+남은 후속 작업:
+
+- `QueueIngestCompletionPublisher`를 운영 RabbitMQ connection/channel과 실제로 연결하는 worker/infra wiring.
+- Data Ingestion Worker가 `adminUserId`로 auth-server 내부 credential API를 호출하는 client 구현.
+- RabbitMQ ingest job consume 경로와 `/ml/ingest` HTTP 위임 경로 중 운영 entrypoint 최종 확정.
+- BFF completion event consumer의 idempotency, retry, DLQ 정책과 event schema 최종 고정.
+
 ## 13. Smoke 도구 추가와 실제 검증
 
 ### 13.1 Local ingestion API smoke
@@ -840,7 +998,7 @@ Ruff: All checks passed
 - `POST /ml/ingest`
 - `GET /ml/ingest/status/{jobId}`
 - `json_fixture` + fake/in-memory adapter 사용
-- 외부 Confluence, Qdrant, MongoDB, OpenAI, BFF callback 호출 없음
+- 외부 Confluence, Qdrant, MongoDB, OpenAI, RabbitMQ completion event 호출 없음
 
 실행 결과:
 
@@ -958,7 +1116,7 @@ compare: feat/sync-latest-ingestion-rag
 - api-spec v2.4.0 정합
 - soft delete/webhook
 - document analyzer graph 연결
-- BFF admin key revoke callback
+- RabbitMQ completion event 기반 Admin Key deactivate trigger
 - local ingestion smoke
 - temporary Confluence Basic Auth smoke
 
@@ -1023,11 +1181,13 @@ remotes/origin/main
 1. 관리자 로그인은 frontend/BFF/Auth Server의 Confluence OAuth 흐름을 통해 처리된다.
 2. 관리자 페이지에서 Admin Key 활성화, ingestion, sync 작업을 수행한다.
 3. BFF/Auth Server가 Admin Key lifecycle을 관리한다.
-4. ML은 BFF가 전달한 `accessToken`, `cloudId`로 `/ml/ingest`를 수행한다.
+4. ML/Data Ingestion Worker는 `adminUserId`로 auth-server 내부 credential API를 호출해
+   admin OAuth `accessToken` + `cloudId`를 조회한다. legacy HTTP smoke에서만 직접
+   `accessToken`/`cloudId` 입력을 허용한다.
 5. 수집 과정에서 Confluence page content와 read restriction metadata를 함께 수집한다.
 6. ACL 정보는 `allowed_users`, `allowed_groups`로 chunk payload에 저장된다.
-7. ingestion job 종료 후 ML은 BFF callback URL로 Admin Key revoke 요청을 보낸다.
-8. 실제 Admin Key deactivate는 BFF/Auth Server가 수행한다.
+7. ingestion job 종료 후 ML/Data Ingestion은 RabbitMQ completion event를 발행한다.
+8. BFF consumer가 completion event를 consume하고 auth-server deactivate 내부 API를 호출한다.
 
 ### 16.2 일반 사용자 흐름
 
@@ -1077,8 +1237,10 @@ RAG_ATLASSIAN_PUBLIC_ACL_GROUP=*
 
 - 발급/말소 주체: BFF/Auth Server
 - 수집 수행: ML
-- 수집 완료 알림: ML -> BFF callback
+- 수집 완료 알림: ML/Data Ingestion -> RabbitMQ completion event
+- completion event consume 및 deactivate 호출: BFF consumer -> auth-server
 - ML은 Atlassian Admin Key DELETE API를 직접 호출하지 않음
+- RabbitMQ payload에는 Confluence credential set을 포함하지 않음
 
 ### 17.5 임시 Basic Auth smoke의 위치
 
@@ -1095,6 +1257,8 @@ RAG_ATLASSIAN_PUBLIC_ACL_GROUP=*
 - production adapter에 Basic Auth를 섞지 않음
 - Admin Key 발급/말소를 수행하지 않음
 - secret을 출력하지 않음
+- 실제 API Token 값은 문서·코드·커밋에 남기지 않음
+- 회의/채팅/로그에 노출된 token은 Atlassian에서 폐기하고 재발급해야 함
 
 ## 18. 검증 이력 요약
 
@@ -1132,16 +1296,20 @@ sample 7798794: normal 404, admin 200, read_users 3, read_groups 0
 남은 항목:
 
 - Confluence OAuth 3LO 구현
-- ML에 전달할 `accessToken`, `cloudId` 계약 확정
-- BFF Admin Key revoke callback endpoint 구현
-- callback 인증 방식 확정
+- auth-server 내부 credential 조회 API 구현:
+  - `GET /internal/auth/admin-confluence-credential?adminUserId={adminUserId}`
+  - 응답: `accessToken`, `cloudId`, `expiresAt`
+- Admin Key activate/deactivate 내부 API 구현
+- RabbitMQ completion event consumer 구현
+- completion event idempotency/DLQ/retry 정책 구현
 - JWT 또는 ML request의 `groups` claim 형식 확정
 - 관리자 페이지에서 Admin Key 활성화/만료/재활성화 UX 구현
 
 주의:
 
-- 현재 ML은 `RAG_BFF_ADMIN_KEY_REVOKE_URL`이 설정되면 callback을 보낸다.
-- callback URL과 인증 토큰은 backend/infra 배포 설정에서 주입해야 한다.
+- 최신 v2.5.0 흐름에서는 ML HTTP callback이 아니라 RabbitMQ completion event가 deactivate
+  트리거다.
+- 기존 `RAG_BFF_ADMIN_KEY_REVOKE_URL` 계열 설정은 legacy compatibility로만 취급한다.
 
 ### 19.2 infra
 
@@ -1171,7 +1339,8 @@ sample 7798794: normal 404, admin 200, read_users 3, read_groups 0
 backend OAuth가 준비된 뒤 수행할 항목:
 
 - production `AtlassianSourceAdapter` 경로로 실 Confluence ingestion smoke
-- Admin Key 활성화 -> `/ml/ingest` -> BFF revoke callback -> Admin Key 말소 확인
+- Admin Key 활성화 -> RabbitMQ ingest job 또는 `/ml/ingest` 위임 -> completion event -> BFF
+  consumer -> auth-server deactivate -> Admin Key 말소 확인
 - Qdrant/Mongo/MySQL/RabbitMQ 실 adapter 연결 확인
 - 일반 사용자 query에서 권한 없는 문서가 검색되지 않는지 확인
 

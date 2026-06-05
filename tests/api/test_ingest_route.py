@@ -25,20 +25,20 @@ from app.schemas.enums import IngestJobStatus
 from app.storage.ingest_jobs import InMemoryIngestJobStore
 
 
-class _RecordingAdminKeyRevokeNotifier:
+class _RecordingCompletionPublisher:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
-        self.requests = []
+        self.events = []
 
-    def notify(self, request) -> None:  # type: ignore[no-untyped-def]
-        self.requests.append(request)
+    def publish(self, event) -> None:  # type: ignore[no-untyped-def]
+        self.events.append(event)
         if self.fail:
-            raise RuntimeError("bff unavailable")
+            raise RuntimeError("rabbitmq unavailable")
 
 
 def _stub_deps(
     *,
-    notifier: _RecordingAdminKeyRevokeNotifier | None = None,
+    completion_publisher: _RecordingCompletionPublisher | None = None,
     fail_crawl: bool = False,
 ) -> IngestDeps:
     """stub 크롤 러너(3 성공 + 1 실패)를 가진 IngestDeps — 카운트 집계 결정론."""
@@ -64,7 +64,7 @@ def _stub_deps(
         run_crawl=_run_crawl,
         run_delta=_run_delta,
         previous_snapshot_path="/tmp/previous_snapshot.json",
-        admin_key_revoke_notifier=notifier,
+        completion_publisher=completion_publisher,
     )
 
 
@@ -111,57 +111,68 @@ async def test_ingest_trigger_then_status_completed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ingest_full_completion_notifies_bff_admin_key_revoke() -> None:
-    """Full 수집 완료 후 ML은 BFF에 Admin Key revoke 요청을 보낸다."""
-    notifier = _RecordingAdminKeyRevokeNotifier()
-    deps = _stub_deps(notifier=notifier)
+async def test_ingest_full_completion_publishes_rabbitmq_completion_event() -> None:
+    """Full 수집 완료 후 ML은 RabbitMQ completion event를 발행한다."""
+    publisher = _RecordingCompletionPublisher()
+    deps = _stub_deps(completion_publisher=publisher)
 
     async with _client(deps) as client:
         resp = await client.post(
             "/ml/ingest",
-            json={"mode": "full", "accessToken": "token-secret", "cloudId": "cloud-1"},
+            json={
+                "mode": "full",
+                "adminUserId": "712020:admin",
+                "accessToken": "token-secret",
+                "cloudId": "cloud-1",
+            },
         )
 
     assert resp.status_code == 200
-    assert len(notifier.requests) == 1
-    request = notifier.requests[0]
-    assert request.job_id == resp.json()["jobId"]
-    assert request.mode == "full"
-    assert request.status is IngestJobStatus.COMPLETED
-    assert request.cloud_id == "cloud-1"
-    assert request.error is None
-    assert "token-secret" not in str(request.to_payload())
+    assert len(publisher.events) == 1
+    event = publisher.events[0]
+    assert event.job_id == resp.json()["jobId"]
+    assert event.mode == "full"
+    assert event.status is IngestJobStatus.COMPLETED
+    assert event.admin_user_id == "712020:admin"
+    assert event.message is None
+    payload = event.to_payload()
+    assert payload["adminUserId"] == "712020:admin"
+    assert "token-secret" not in str(payload)
+    assert "cloud-1" not in str(payload)
+    assert "accessToken" not in payload
+    assert "cloudId" not in payload
 
 
 @pytest.mark.asyncio
-async def test_ingest_failure_still_notifies_bff_admin_key_revoke() -> None:
-    """수집 실패도 terminal 상태이므로 BFF revoke 요청을 보낸다."""
-    notifier = _RecordingAdminKeyRevokeNotifier()
-    deps = _stub_deps(notifier=notifier, fail_crawl=True)
+async def test_ingest_failure_still_publishes_completion_event() -> None:
+    """수집 실패도 terminal 상태이므로 completion event를 발행한다."""
+    publisher = _RecordingCompletionPublisher()
+    deps = _stub_deps(completion_publisher=publisher, fail_crawl=True)
 
     async with _client(deps) as client:
         resp = await client.post(
             "/ml/ingest",
-            json={"mode": "full", "accessToken": "token-secret", "cloudId": "cloud-2"},
+            json={"mode": "full", "adminUserId": "712020:admin"},
         )
         job_id = resp.json()["jobId"]
         status_resp = await client.get(f"/ml/ingest/status/{job_id}")
 
     assert status_resp.status_code == 200
     assert status_resp.json()["status"] == "FAILED"
-    assert len(notifier.requests) == 1
-    request = notifier.requests[0]
-    assert request.job_id == job_id
-    assert request.status is IngestJobStatus.FAILED
-    assert request.cloud_id == "cloud-2"
-    assert request.error == "crawl failed"
+    assert len(publisher.events) == 1
+    event = publisher.events[0]
+    assert event.job_id == job_id
+    assert event.status is IngestJobStatus.FAILED
+    assert event.admin_user_id == "712020:admin"
+    assert event.error_code == "INGEST_FAILED"
+    assert event.message == "crawl failed"
 
 
 @pytest.mark.asyncio
-async def test_admin_key_revoke_failure_does_not_mask_completed_status() -> None:
-    """BFF revoke callback 실패는 job terminal 상태를 덮어쓰지 않는다."""
-    notifier = _RecordingAdminKeyRevokeNotifier(fail=True)
-    deps = _stub_deps(notifier=notifier)
+async def test_completion_event_publish_failure_does_not_mask_completed_status() -> None:
+    """completion event 발행 실패는 job terminal 상태를 덮어쓰지 않는다."""
+    publisher = _RecordingCompletionPublisher(fail=True)
+    deps = _stub_deps(completion_publisher=publisher)
 
     async with _client(deps) as client:
         resp = await client.post("/ml/ingest", json={"mode": "full"})
@@ -170,7 +181,7 @@ async def test_admin_key_revoke_failure_does_not_mask_completed_status() -> None
 
     assert status_resp.status_code == 200
     assert status_resp.json()["status"] == "COMPLETED"
-    assert len(notifier.requests) == 1
+    assert len(publisher.events) == 1
 
 
 @pytest.mark.asyncio
@@ -200,24 +211,24 @@ async def test_ingest_delta_mode_uses_delta_runner_and_counts_changed_deleted_fa
 
 
 @pytest.mark.asyncio
-async def test_ingest_delta_completion_notifies_bff_admin_key_revoke() -> None:
-    """Delta 수집 완료 후에도 BFF Admin Key revoke callback을 호출한다."""
-    notifier = _RecordingAdminKeyRevokeNotifier()
-    deps = _stub_deps(notifier=notifier)
+async def test_ingest_delta_completion_publishes_completion_event() -> None:
+    """Delta 수집 완료 후에도 completion event를 발행한다."""
+    publisher = _RecordingCompletionPublisher()
+    deps = _stub_deps(completion_publisher=publisher)
 
     async with _client(deps) as client:
         resp = await client.post(
             "/ml/ingest",
-            json={"mode": "delta", "accessToken": "token-secret", "cloudId": "cloud-delta"},
+            json={"mode": "delta", "adminUserId": "712020:admin"},
         )
 
     assert resp.status_code == 200
-    assert len(notifier.requests) == 1
-    request = notifier.requests[0]
-    assert request.job_id == resp.json()["jobId"]
-    assert request.mode == "delta"
-    assert request.status is IngestJobStatus.COMPLETED
-    assert request.cloud_id == "cloud-delta"
+    assert len(publisher.events) == 1
+    event = publisher.events[0]
+    assert event.job_id == resp.json()["jobId"]
+    assert event.mode == "delta"
+    assert event.status is IngestJobStatus.COMPLETED
+    assert event.admin_user_id == "712020:admin"
 
 
 @pytest.mark.asyncio

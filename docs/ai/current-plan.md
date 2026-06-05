@@ -934,13 +934,17 @@ BE 통합 API 스펙 수신(`api-spec-BE-adjust.md`, 2026-05-21). PDF #2(API Spe
   → **본 담당자 능동 작업 종료(실질 완료).**
 - **잔여 (Milestone D)**: feature13 PDF #3(BE ACL 컬럼, 외부 협의) / feature17c 이관·보류분(위)
   / 실 Confluence ingestion smoke
-- **Admin Key 수명주기**: 말소 주체는 BFF/Auth Server로 확정. ML은 수집 job terminal 상태
-  (`COMPLETED`/`FAILED`) 도달 후 `RAG_BFF_ADMIN_KEY_REVOKE_URL` callback으로 revoke 요청만
-  보낸다. 실제 BFF endpoint URL/인증 토큰 값은 backend 배포 설정에서 주입 필요.
+- **Admin Key 수명주기(v2.5.0)**: 말소 주체는 BFF/Auth Server로 확정. 2026-06-05 backend
+  최신 문서 기준으로 BFF polling watcher/ML HTTP callback 방식은 RabbitMQ completion event로
+  대체됐다. ML/Data Ingestion은 terminal 상태(`COMPLETED`/`FAILED`) 도달 후 credential 없는
+  completion event(`jobId`/`adminUserId`/`mode`/`status`/`completedAt`/`errorCode`/`message`)를
+  발행하고, BFF consumer가 auth-server `POST /internal/admin/key/deactivate`를 호출한다.
 - **Local ingestion smoke**: `scripts/smoke_ingest_api.py` 추가. `json_fixture` + fake/in-memory
   adapter로 `/ml/ingest` route를 통과해 샘플 92페이지 `COMPLETED`/실패 0건을 확인했다.
 - **임시 Confluence Basic Auth smoke**: backend OAuth 완료 전 실제 Confluence/Admin Key 동작을
   확인하기 위해 `scripts/smoke_confluence_basic.py`를 추가한다. 이 스크립트는 production
   adapter가 아니며, API Token Basic Auth로 `/api/v2/pages` 일반/Admin Key 조회 차이와
-  `restriction/byOperation/read` 응답 shape만 read-only로 확인한다.
-- **외부 협의 대기**: feature13 PDF #3 (BE 명세), BFF revoke callback endpoint 확정, worker 운영 위치
+  `restriction/byOperation/read` 응답 shape만 read-only로 확인한다. 실제 API Token 값은
+  문서/코드/커밋에 남기지 않으며, 노출된 토큰은 폐기 후 재발급한다.
+- **외부 협의 대기**: feature13 PDF #3 (BE 명세), RabbitMQ completion event 운영 wiring,
+  auth-server 내부 credential 조회 API, worker 운영 위치

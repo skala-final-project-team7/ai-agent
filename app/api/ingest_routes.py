@@ -12,8 +12,10 @@
 변경사항 내역 (날짜, 변경목적, 변경내용 순)
   - 2026-05-29, 최초 작성 — IngestRequest(spaceKey/mode/accessToken/cloudId) + POST 트리거
     (BackgroundTasks 로 비동기 크롤) + status 조회(KST startedAt) + health.
-  - 2026-06-05, api-spec v2.4.0 정합 — IngestRequest 에서 spaceKey 제거. mode/accessToken/
-    cloudId 만 받고, space_key 미지정으로 전체 스페이스 수집 또는 delta sync 를 수행.
+  - 2026-06-05, api-spec v2.4.0 정합 — IngestRequest 에서 spaceKey 제거.
+  - 2026-06-05, api-spec v2.5.0 정합 — Admin Key 말소 트리거를 BFF HTTP callback 에서
+    RabbitMQ completion event 로 전환. adminUserId 를 preferred job 식별자로 추가하고,
+    accessToken/cloudId 직접 전달은 legacy PoC 호환 필드로만 유지.
 --------------------------------------------------
 [보안] 요청 ``accessToken``/``cloudId`` 는 로그·응답 본문에 남기지 않는다(루트 CLAUDE.md
        보안 규칙). 상태 응답에도 토큰 관련 필드를 포함하지 않는다.
@@ -32,7 +34,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.api.admin_key_revoke import AdminKeyRevokeRequest, notify_admin_key_revoke_safely
+from app.api.ingest_completion import IngestCompletionEvent, publish_ingest_completion_safely
 from app.api.ingest_deps import IngestDeps
 from app.ingestion.crawler import CrawlRequest
 from app.ingestion.sync import DeltaSyncRequest
@@ -58,24 +60,34 @@ def _to_kst(dt: datetime) -> str:
 
 
 class IngestRequest(BaseModel):
-    """``POST /ml/ingest`` 요청 본문 (api-spec v2.4.0 §2-2).
+    """``POST /ml/ingest`` 요청 본문 (api-spec v2.5.0 §2-2).
 
-    BFF 는 camelCase JSON(``accessToken``/``cloudId``)을 보낸다.
-    ``populate_by_name=True`` 로 snake_case 입력도 허용한다(테스트 편의).
+    Preferred 운영 경로는 RabbitMQ ingest job 또는 HTTP 위임 payload 에 credential set 을 싣지
+    않고 ``adminUserId`` 만 전달한다. Data Ingestion Worker 는 auth-server 내부 credential API
+    로 admin OAuth ``accessToken`` + ``cloudId`` 를 조회한다.
 
-    api-spec v2.4.0 §2-2 — 스페이스 스코프 파라미터(``spaceKey``)는 없다.
-    Admin Key 로 접근 가능한 전체 스페이스를 수집한다.
+    ``accessToken``/``cloudId`` 는 backend OAuth 완성 전 local/PoC smoke 호환 필드로만 남긴다.
+    production RabbitMQ job/completion payload 에는 절대 포함하지 않는다.
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
     mode: str = Field(default="full", description="수집 모드 — full(전체) | delta(변경분)")
+    admin_user_id: str | None = Field(
+        default=None,
+        alias="adminUserId",
+        description="Admin Confluence accountId. v2.5 preferred credential lookup key.",
+    )
     access_token: str | None = Field(
         default=None,
         alias="accessToken",
-        description="Confluence OAuth access token(PoC, 로그 금지)",
+        description="Legacy PoC-only Confluence OAuth access token. 로그/큐/응답 금지.",
     )
-    cloud_id: str | None = Field(default=None, alias="cloudId", description="Confluence cloudId")
+    cloud_id: str | None = Field(
+        default=None,
+        alias="cloudId",
+        description="Legacy PoC-only Confluence cloudId. RabbitMQ payload 포함 금지.",
+    )
 
     @field_validator("mode")
     @classmethod
@@ -117,12 +129,13 @@ def _run_full_ingest_job(deps: IngestDeps, job_id: str, crawl_request: CrawlRequ
             finished_at=finished_at,
             error=str(exc),
         )
-        _notify_admin_key_revoke(
+        _publish_ingest_completion(
             deps,
             job_id=job_id,
             mode="full",
             status=IngestJobStatus.FAILED,
-            cloud_id=crawl_request.cloud_id,
+            admin_user_id=crawl_request.admin_user_id,
+            error_code="INGEST_FAILED",
             error=str(exc),
             finished_at=finished_at,
         )
@@ -137,12 +150,12 @@ def _run_full_ingest_job(deps: IngestDeps, job_id: str, crawl_request: CrawlRequ
         failed_pages=failed,
         finished_at=finished_at,
     )
-    _notify_admin_key_revoke(
+    _publish_ingest_completion(
         deps,
         job_id=job_id,
         mode="full",
         status=IngestJobStatus.COMPLETED,
-        cloud_id=crawl_request.cloud_id,
+        admin_user_id=crawl_request.admin_user_id,
         finished_at=finished_at,
     )
 
@@ -171,12 +184,13 @@ def _run_delta_ingest_job(deps: IngestDeps, job_id: str, delta_request: DeltaSyn
             finished_at=finished_at,
             error=str(exc),
         )
-        _notify_admin_key_revoke(
+        _publish_ingest_completion(
             deps,
             job_id=job_id,
             mode="delta",
             status=IngestJobStatus.FAILED,
-            cloud_id=delta_request.cloud_id,
+            admin_user_id=delta_request.admin_user_id,
+            error_code="INGEST_FAILED",
             error=str(exc),
             finished_at=finished_at,
         )
@@ -191,42 +205,43 @@ def _run_delta_ingest_job(deps: IngestDeps, job_id: str, delta_request: DeltaSyn
         failed_pages=result.failed_items,
         finished_at=finished_at,
     )
-    _notify_admin_key_revoke(
+    _publish_ingest_completion(
         deps,
         job_id=job_id,
         mode="delta",
         status=IngestJobStatus.COMPLETED,
-        cloud_id=delta_request.cloud_id,
+        admin_user_id=delta_request.admin_user_id,
         finished_at=finished_at,
     )
 
 
-def _notify_admin_key_revoke(
+def _publish_ingest_completion(
     deps: IngestDeps,
     *,
     job_id: str,
     mode: str,
     status: IngestJobStatus,
-    cloud_id: str | None,
+    admin_user_id: str | None,
     finished_at: datetime,
+    error_code: str | None = None,
     error: str | None = None,
 ) -> None:
-    """수집 terminal 상태 도달 후 BFF에 Admin Key revoke를 요청한다.
+    """수집 terminal 상태 도달 후 RabbitMQ completion event 를 발행한다.
 
-    ML은 Atlassian Admin Key를 직접 말소하지 않는다. BFF callback이 설정된 경우에만
-    요청하며, 실패해도 ingestion job 상태를 되돌리거나 덮어쓰지 않는다.
+    api-spec v2.5.0 기준 ML은 Atlassian Admin Key를 직접 말소하지 않고, BFF HTTP callback도
+    호출하지 않는다. BFF consumer 가 completion event 를 consume하고 auth-server deactivate
+    내부 API 를 호출한다. event payload 에 credential set 은 포함하지 않는다.
     """
-    if deps.admin_key_revoke_notifier is None:
-        return
-    notify_admin_key_revoke_safely(
-        deps.admin_key_revoke_notifier,
-        AdminKeyRevokeRequest(
+    publish_ingest_completion_safely(
+        deps.completion_publisher,
+        IngestCompletionEvent(
             job_id=job_id,
             mode=mode,
             status=status,
-            cloud_id=cloud_id,
-            error=error,
-            finished_at=finished_at,
+            admin_user_id=admin_user_id,
+            error_code=error_code,
+            message=error,
+            completed_at=finished_at,
         ),
     )
 
@@ -237,7 +252,7 @@ async def ingest_route(
     background_tasks: BackgroundTasks,
     deps: IngestDepsDep,
 ) -> dict[str, Any]:
-    """수집 트리거 (api-spec v2.4.0 §2-2).
+    """수집 트리거 (api-spec v2.5.0 §2-2).
 
     잡을 ``STARTED`` 로 생성하고 백그라운드 태스크로 crawl→chunk→upsert 를 실행한 뒤,
     즉시 ``jobId`` / ``status`` / ``startedAt``(KST)을 반환한다. 진행 상태는
@@ -245,18 +260,20 @@ async def ingest_route(
     Admin Key 로 접근 가능한 전체 스페이스를 수집한다.
     """
     job = deps.job_store.create()
-    # 토큰은 Request 객체로만 전달하고 로그/응답/큐 메시지에 남기지 않는다.
+    # credential 값은 legacy request 객체에만 전달하고 로그/응답/큐 메시지에 남기지 않는다.
     if payload.mode == "delta":
         delta_request = DeltaSyncRequest(
             previous_snapshot_path=deps.previous_snapshot_path,
             access_token=payload.access_token,
             cloud_id=payload.cloud_id,
+            admin_user_id=payload.admin_user_id,
         )
         background_tasks.add_task(_run_delta_ingest_job, deps, job.job_id, delta_request)
     else:
         crawl_request = CrawlRequest(
             access_token=payload.access_token,
             cloud_id=payload.cloud_id,
+            admin_user_id=payload.admin_user_id,
         )
         background_tasks.add_task(_run_full_ingest_job, deps, job.job_id, crawl_request)
     return {
