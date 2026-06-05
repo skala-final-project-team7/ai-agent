@@ -1,0 +1,46 @@
+{
+  "conversation_id": "conversation-low-confidence",
+  "user_id": "user-synthetic",
+  "answer_output": {
+    "generation_id": "generation-low-confidence",
+    "answer_status": "success",
+    "answer": "Perform the operational fallback.",
+    "sentences": [
+      {
+        "sentence_id": "s1",
+        "text": "Perform the operational fallback.",
+        "citations": ["ctx-001"],
+        "citation_required": true
+      }
+    ],
+    "sources": [],
+    "used_context_ids": ["ctx-001"],
+    "routing": {
+      "routing_id": "routing-low-confidence",
+      "intent": "operations_guide",
+      "task_prompt_type": "step_by_step"
+    },
+    "model": "synthetic-generation-model",
+    "confidence": 0.5,
+    "warnings": []
+  },
+  "contexts": [
+    {
+      "context_id": "ctx-001",
+      "document_id": "doc-001",
+      "chunk_id": "chunk-001",
+      "title": "Synthetic Operations Guide",
+      "space_key": "OPS",
+      "source_url": "https://example.invalid/confluence/pages/low-confidence",
+      "content": "The guide mentions verification evidence but does not clearly describe the fallback.",
+      "score": 0.5,
+      "rerank_score": 0.55,
+      "metadata": {
+        "page_id": "page-low-confidence"
+      }
+    }
+  ],
+  "metadata": {
+    "query": "What fallback should be used?"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "conversation_id": "conversation-history-synthetic",
+  "user_id": "user-history-synthetic",
+  "original_question": "지난번 변경 이력 찾아줘",
+  "query": "IAM 권한 변경 이력과 날짜",
+  "history_decision": "follow_up",
+  "preserved_context": {
+    "summary": "Recent IAM change audit history",
+    "entities": ["IAM", "change history"],
+    "turn_refs": ["turn-history-1"]
+  },
+  "reset_required": false,
+  "metadata": {
+    "locale": "ko-KR",
+    "space_keys": ["AUDIT"],
+    "groups": ["audit-team"],
+    "labels": ["change-history"],
+    "document_types": ["audit-log"],
+    "source_types": ["confluence"],
+    "date_range": {
+      "from": "2026-01-01",
+      "to": "2026-05-15"
+    }
+  }
+}

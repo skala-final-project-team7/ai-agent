@@ -1,0 +1,46 @@
+{
+  "conversation_id": "conversation-numeric-mismatch",
+  "user_id": "user-synthetic",
+  "answer_output": {
+    "generation_id": "generation-numeric-mismatch",
+    "answer_status": "success",
+    "answer": "Rollback version v2.4.1 finished on 2026-05-18 with 99% success.",
+    "sentences": [
+      {
+        "sentence_id": "s1",
+        "text": "Rollback version v2.4.1 finished on 2026-05-18 with 99% success.",
+        "citations": ["ctx-001"],
+        "citation_required": true
+      }
+    ],
+    "sources": [],
+    "used_context_ids": ["ctx-001"],
+    "routing": {
+      "routing_id": "routing-numeric-mismatch",
+      "intent": "history_lookup",
+      "task_prompt_type": "history_summary"
+    },
+    "model": "synthetic-generation-model",
+    "confidence": 0.7,
+    "warnings": []
+  },
+  "contexts": [
+    {
+      "context_id": "ctx-001",
+      "document_id": "doc-001",
+      "chunk_id": "chunk-001",
+      "title": "Synthetic Change History",
+      "space_key": "OPS",
+      "source_url": "https://example.invalid/confluence/pages/numeric-mismatch",
+      "content": "Rollback version v2.4.0 finished on 2026-05-17 with 90% success.",
+      "score": 0.8,
+      "rerank_score": 0.88,
+      "metadata": {
+        "page_id": "page-numeric-mismatch"
+      }
+    }
+  ],
+  "metadata": {
+    "query": "What version finished successfully?"
+  }
+}

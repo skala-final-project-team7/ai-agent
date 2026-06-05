@@ -1,0 +1,36 @@
+{
+  "conversation_id": "conversation-attachment",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-attachment",
+    "original_question": "Synthetic attachment source?",
+    "query": "synthetic attachment source",
+    "intent": "operations_guide",
+    "task_prompt_type": "step_by_step",
+    "expanded_queries": ["synthetic attachment source"],
+    "metadata_filters": {"document_types": ["attachment"]},
+    "pool_weights": {"title": 0.25, "content": 0.6, "label": 0.15},
+    "confidence": 0.77,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": [
+      {
+        "context_id": "ctx-attachment",
+        "document_id": "doc-attachment",
+        "chunk_id": "chunk-attachment",
+        "title": "Synthetic Attachment Guide",
+        "space_key": "OPS",
+        "source_url": "https://example.invalid/attachment",
+        "content": "The synthetic attachment guide describes an attached checklist used for validation.",
+        "score": 0.69,
+        "rerank_score": 0.89,
+        "metadata": {
+          "page_id": "page-attachment",
+          "attachment_filename": "synthetic-checklist.pdf"
+        }
+      }
+    ]
+  },
+  "metadata": {"locale": "ko-KR"}
+}

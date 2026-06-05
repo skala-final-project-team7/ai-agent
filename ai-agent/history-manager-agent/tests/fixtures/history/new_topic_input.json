@@ -1,0 +1,21 @@
+{
+  "conversation_id": "conversation-synthetic-new-topic",
+  "user_id": "user-synthetic",
+  "current_question": "새 배포 정책은?",
+  "history": [
+    {
+      "turn_id": "turn-001",
+      "role": "user",
+      "content": "이전에는 IAM 정책 장애 대응을 이야기했어.",
+      "created_at": "2026-05-15T00:01:00Z",
+      "citations": [],
+      "metadata": {
+        "source": "synthetic"
+      }
+    }
+  ],
+  "metadata": {
+    "locale": "ko-KR",
+    "fixture": "new_topic"
+  }
+}

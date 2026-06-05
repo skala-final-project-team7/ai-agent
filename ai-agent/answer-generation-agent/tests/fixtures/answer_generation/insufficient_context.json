@@ -1,0 +1,20 @@
+{
+  "conversation_id": "conversation-insufficient",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-insufficient",
+    "original_question": "Synthetic unavailable context?",
+    "query": "synthetic unavailable context",
+    "intent": "unknown",
+    "task_prompt_type": "general",
+    "expanded_queries": ["synthetic unavailable context"],
+    "metadata_filters": {},
+    "pool_weights": {"title": 0.25, "content": 0.6, "label": 0.15},
+    "confidence": 0.5,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": []
+  },
+  "metadata": {"locale": "ko-KR"}
+}

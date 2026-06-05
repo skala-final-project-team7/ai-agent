@@ -1,0 +1,46 @@
+{
+  "conversation_id": "conversation-invalid-citation",
+  "user_id": "user-synthetic",
+  "answer_output": {
+    "generation_id": "generation-invalid-citation",
+    "answer_status": "success",
+    "answer": "Rollback follows the documented runbook.",
+    "sentences": [
+      {
+        "sentence_id": "s1",
+        "text": "Rollback follows the documented runbook.",
+        "citations": ["ctx-missing"],
+        "citation_required": true
+      }
+    ],
+    "sources": [],
+    "used_context_ids": ["ctx-missing"],
+    "routing": {
+      "routing_id": "routing-invalid-citation",
+      "intent": "incident_response",
+      "task_prompt_type": "timeline"
+    },
+    "model": "synthetic-generation-model",
+    "confidence": 0.7,
+    "warnings": []
+  },
+  "contexts": [
+    {
+      "context_id": "ctx-001",
+      "document_id": "doc-001",
+      "chunk_id": "chunk-001",
+      "title": "Synthetic Rollback Runbook",
+      "space_key": "OPS",
+      "source_url": "https://example.invalid/confluence/pages/invalid-citation",
+      "content": "Rollback follows the documented runbook.",
+      "score": 0.8,
+      "rerank_score": 0.9,
+      "metadata": {
+        "page_id": "page-invalid-citation"
+      }
+    }
+  ],
+  "metadata": {
+    "query": "How should rollback be handled?"
+  }
+}

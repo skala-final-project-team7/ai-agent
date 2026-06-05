@@ -1,0 +1,36 @@
+{
+  "conversation_id": "conversation-insufficient-context",
+  "user_id": "user-synthetic",
+  "answer_output": {
+    "generation_id": "generation-insufficient-context",
+    "answer_status": "insufficient_context",
+    "answer": "The available context is insufficient for a firm answer.",
+    "sentences": [
+      {
+        "sentence_id": "s1",
+        "text": "The available context is insufficient for a firm answer.",
+        "citations": [],
+        "citation_required": true
+      }
+    ],
+    "sources": [],
+    "used_context_ids": [],
+    "routing": {
+      "routing_id": "routing-insufficient-context",
+      "intent": "unknown",
+      "task_prompt_type": "general"
+    },
+    "model": "synthetic-generation-model",
+    "confidence": 0.2,
+    "warnings": [
+      {
+        "code": "insufficient_context",
+        "message": "The answer was generated with insufficient context."
+      }
+    ]
+  },
+  "contexts": [],
+  "metadata": {
+    "query": "What is the exact rollback outcome?"
+  }
+}

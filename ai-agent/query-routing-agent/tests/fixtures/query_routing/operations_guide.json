@@ -1,0 +1,21 @@
+{
+  "conversation_id": "conversation-operations-synthetic",
+  "user_id": "user-operations-synthetic",
+  "original_question": "배포 전 점검 절차 알려줘",
+  "query": "서비스 배포 전 운영 점검 절차",
+  "history_decision": "new_topic",
+  "preserved_context": {
+    "summary": "",
+    "entities": ["deployment", "runbook"],
+    "turn_refs": []
+  },
+  "reset_required": true,
+  "metadata": {
+    "locale": "ko-KR",
+    "space_keys": ["RUNBOOK"],
+    "groups": ["ops-team"],
+    "labels": ["operations"],
+    "document_types": ["guide"],
+    "source_types": ["confluence"]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "conversation_id": "conversation-evidence",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-evidence",
+    "original_question": "Synthetic policy exception?",
+    "query": "synthetic policy exception evidence",
+    "intent": "policy_procedure",
+    "task_prompt_type": "evidence_first",
+    "expanded_queries": ["synthetic policy exception evidence"],
+    "metadata_filters": {"space_keys": ["POLICY"]},
+    "pool_weights": {"title": 0.3, "content": 0.6, "label": 0.1},
+    "confidence": 0.86,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": [
+      {
+        "context_id": "ctx-evidence",
+        "document_id": "doc-evidence",
+        "chunk_id": "chunk-evidence",
+        "title": "Synthetic Policy",
+        "space_key": "POLICY",
+        "source_url": "https://example.invalid/evidence",
+        "content": "The synthetic policy states that exceptions require documented approval and evidence retained with the request.",
+        "score": 0.78,
+        "rerank_score": 0.94,
+        "metadata": {"page_id": "page-evidence"}
+      }
+    ]
+  },
+  "metadata": {"locale": "ko-KR"}
+}

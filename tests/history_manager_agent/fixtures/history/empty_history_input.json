@@ -1,0 +1,10 @@
+{
+  "conversation_id": "conversation-synthetic-empty",
+  "user_id": "user-synthetic",
+  "current_question": "새 질문이야?",
+  "history": [],
+  "metadata": {
+    "locale": "ko-KR",
+    "fixture": "empty_history"
+  }
+}

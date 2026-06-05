@@ -1,0 +1,18 @@
+{
+  "conversation_id": "conversation-provider-failure-synthetic",
+  "user_id": "user-provider-failure-synthetic",
+  "original_question": "장애 대응 문서 찾아줘",
+  "query": "장애 대응 절차",
+  "history_decision": "new_topic",
+  "preserved_context": {
+    "summary": "",
+    "entities": ["incident"],
+    "turn_refs": []
+  },
+  "reset_required": true,
+  "metadata": {
+    "locale": "ko-KR",
+    "space_keys": ["OPS"],
+    "groups": ["ops-team"]
+  }
+}

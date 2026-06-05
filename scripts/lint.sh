@@ -17,6 +17,22 @@ elif [ -f "./mvnw" ]; then
   ./mvnw verify -DskipTests
 fi
 
+# Root Python project (단독 RAG / 단일 모듈 저장소)
+if [ -f "./pyproject.toml" ] || [ -f "./requirements.txt" ]; then
+  echo ""
+  echo "==> root python lint"
+  if command -v ruff >/dev/null 2>&1; then
+    ruff check .
+  else
+    echo "ruff not found. Skipping ruff for root Python project."
+  fi
+  if command -v mypy >/dev/null 2>&1; then
+    mypy app
+  else
+    echo "mypy not found. Skipping mypy for root Python project."
+  fi
+fi
+
 # Backend Java project
 if [ -f "./backend/gradlew" ]; then
   echo ""

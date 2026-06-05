@@ -21,6 +21,20 @@ elif [ -f "./mvnw" ]; then
   echo "==> Maven format is project-specific. Configure spotless:apply or formatter plugin if needed."
 fi
 
+# Root Python project (단독 RAG / 단일 모듈 저장소)
+if [ -f "./pyproject.toml" ] || [ -f "./requirements.txt" ]; then
+  echo ""
+  echo "==> root python format"
+  if command -v ruff >/dev/null 2>&1; then
+    ruff format .
+    ruff check . --fix
+  elif command -v black >/dev/null 2>&1; then
+    black .
+  else
+    echo "ruff/black not found. Skipping root Python format."
+  fi
+fi
+
 # Backend Java project
 if [ -f "./backend/gradlew" ]; then
   echo ""

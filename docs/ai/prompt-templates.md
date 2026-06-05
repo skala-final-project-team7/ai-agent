@@ -1,6 +1,6 @@
-# Code Agent Prompt Templates
+# Claude Code Prompt Templates
 
-이 문서는 Codex, Claude Code 등 Code Agent에게 작업을 지시할 때 사용하는 팀 공통 프롬프트 템플릿을 정의한다.
+이 문서는 Claude Code에게 작업을 지시할 때 사용하는 팀 공통 프롬프트 템플릿을 정의한다.
 
 ---
 
@@ -25,7 +25,7 @@
 -
 
 [참고 문서]
-- AGENTS.md
+- CLAUDE.md
 - docs/architecture.md
 - docs/conventions.md
 - docs/api-spec.md

@@ -1,0 +1,33 @@
+{
+  "conversation_id": "conversation-step",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-step",
+    "original_question": "Synthetic deployment procedure?",
+    "query": "synthetic deployment procedure",
+    "intent": "operations_guide",
+    "task_prompt_type": "step_by_step",
+    "expanded_queries": ["synthetic deployment procedure"],
+    "metadata_filters": {"space_keys": ["OPS"]},
+    "pool_weights": {"title": 0.25, "content": 0.6, "label": 0.15},
+    "confidence": 0.81,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": [
+      {
+        "context_id": "ctx-step",
+        "document_id": "doc-step",
+        "chunk_id": "chunk-step",
+        "title": "Synthetic Operation Guide",
+        "space_key": "OPS",
+        "source_url": "https://example.invalid/step",
+        "content": "The synthetic guide requires preparing the release, applying the change, validating metrics, and recording the result.",
+        "score": 0.71,
+        "rerank_score": 0.91,
+        "metadata": {"page_id": "page-step"}
+      }
+    ]
+  },
+  "metadata": {"locale": "ko-KR"}
+}

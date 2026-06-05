@@ -1,0 +1,33 @@
+{
+  "conversation_id": "conversation-history",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-history",
+    "original_question": "Synthetic change history?",
+    "query": "synthetic change history",
+    "intent": "history_lookup",
+    "task_prompt_type": "history_summary",
+    "expanded_queries": ["synthetic change history"],
+    "metadata_filters": {"space_keys": ["OPS"]},
+    "pool_weights": {"title": 0.2, "content": 0.5, "label": 0.3},
+    "confidence": 0.79,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": [
+      {
+        "context_id": "ctx-history",
+        "document_id": "doc-history",
+        "chunk_id": "chunk-history",
+        "title": "Synthetic Change Log",
+        "space_key": "OPS",
+        "source_url": "https://example.invalid/history",
+        "content": "The synthetic change log records a configuration update, validation result, and follow-up review date.",
+        "score": 0.73,
+        "rerank_score": 0.9,
+        "metadata": {"page_id": "page-history"}
+      }
+    ]
+  },
+  "metadata": {"locale": "ko-KR"}
+}

@@ -1,0 +1,33 @@
+{
+  "conversation_id": "conversation-general",
+  "user_id": "user-synthetic",
+  "routing_decision": {
+    "routing_id": "routing-general",
+    "original_question": "Synthetic general question?",
+    "query": "synthetic general question",
+    "intent": "unknown",
+    "task_prompt_type": "general",
+    "expanded_queries": ["synthetic general question"],
+    "metadata_filters": {"space_keys": ["OPS"]},
+    "pool_weights": {"title": 0.25, "content": 0.6, "label": 0.15},
+    "confidence": 0.62,
+    "warnings": []
+  },
+  "search_results": {
+    "top_contexts": [
+      {
+        "context_id": "ctx-general",
+        "document_id": "doc-general",
+        "chunk_id": "chunk-general",
+        "title": "Synthetic General Note",
+        "space_key": "OPS",
+        "source_url": "https://example.invalid/general",
+        "content": "The synthetic general note gives a concise supported explanation for the question.",
+        "score": 0.68,
+        "rerank_score": 0.88,
+        "metadata": {"page_id": "page-general"}
+      }
+    ]
+  },
+  "metadata": {"locale": "ko-KR"}
+}

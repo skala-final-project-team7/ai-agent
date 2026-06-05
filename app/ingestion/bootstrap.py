@@ -1,0 +1,139 @@
+"""Ingestion 의존성 부트스트랩(composition root) — Settings 기반 어댑터 조립 [Pipeline].
+
+--------------------------------------------------
+작성자 : 최태성
+작성목적 : Worker·crawl 이 사용하는 외부 의존성(raw_store / 임베더 / Qdrant / cache / jobs /
+          문서 분석기)을 ``Settings.use_real_adapters`` 토글에 따라 PoC(전부 Fake) 또는 실
+          어댑터로 조립한다(config.py 의 use_real_adapters 패턴 재사용). 실 어댑터는 함수 내
+          지연 import 로 무거운 의존(torch/qdrant/openai)을 실행 시점으로 미룬다. RabbitMQ
+          연결을 소유한 실행 loop·CLI 엔트리포인트는 인프라 의존이라 후속(featureI-7c)으로
+          분리한다 — 본 모듈은 **데이터 의존성 조립**만 책임진다.
+작성일 : 2026-05-26 (featureI-7b)
+변경사항 내역 (날짜, 변경목적, 변경내용 순)
+  - 2026-05-26, 최초 작성, featureI-7b — build_raw_page_store / build_document_analyzer /
+    build_chunking_worker_deps (PoC vs real).
+--------------------------------------------------
+[호환성]
+  - Python 3.11.x
+  - 실 어댑터 모드는 sentence-transformers/fastembed/qdrant-client/pymongo/sqlalchemy/openai 필요
+    (지연 import). PoC 모드는 외부 의존성 0.
+--------------------------------------------------
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from app.config import Settings, get_settings
+from app.ingestion.attachment_downloader import DefaultAttachmentDownloader
+from app.ingestion.embedder.base import FakeDenseEmbedder, FakeSparseEmbedder
+from app.ingestion.workers import QUEUE_CHUNKING
+from app.ingestion.workers.attachment_worker import AttachmentExtractionDeps
+from app.ingestion.workers.chunking_worker import ChunkingWorkerDeps
+from app.ingestion.workers.publisher import QueuePublisher
+from app.storage.jobs import FakeIngestionJobsRepository
+from app.storage.mongo_cache import FakeEmbeddingCache
+from app.storage.qdrant_fake import FakeQdrantPoolStore
+from app.storage.raw_store import FakeRawPageStore, RawPageStore
+
+if TYPE_CHECKING:
+    from app.ingestion.document_analyzer import DocumentAnalyzer
+
+
+def build_raw_page_store(settings: Settings | None = None) -> RawPageStore:
+    """``raw_pages`` 스토어를 조립한다 — PoC: in-memory / 실: MongoRawPageStore."""
+    resolved = settings or get_settings()
+    if not resolved.use_real_adapters:
+        return FakeRawPageStore()
+    from app.storage.raw_store import MongoRawPageStore
+
+    return MongoRawPageStore.from_settings(resolved)
+
+
+def build_document_analyzer(settings: Settings | None = None) -> DocumentAnalyzer | None:
+    """문서 분석기[Agent]를 조립한다.
+
+    PoC 모드는 ``None`` 을 반환해 chunk_page 의 라벨 휴리스틱 폴백을 쓰고(LLM 비용 0),
+    실 모드는 GPT-4o-mini 분류기 + MySQL 캐시로 구성한다.
+    """
+    resolved = settings or get_settings()
+    if not resolved.use_real_adapters:
+        return None
+    from app.ingestion.document_analyzer import DocumentAnalyzer, OpenAIDocTypeClassifier
+    from app.storage.space_doc_type_cache import MySQLSpaceDocTypeCache
+
+    classifier = OpenAIDocTypeClassifier(
+        api_key=resolved.openai_api_key.get_secret_value(),
+        model=resolved.llm_aux_model,
+    )
+    cache = MySQLSpaceDocTypeCache.from_settings(resolved)
+    return DocumentAnalyzer(classifier=classifier, cache=cache)
+
+
+def build_chunking_worker_deps(
+    settings: Settings | None = None,
+    *,
+    raw_store: RawPageStore | None = None,
+) -> ChunkingWorkerDeps:
+    """Chunking+Embedding Worker 의존성을 조립한다(PoC: Fake / 실: E5+BM25+Qdrant+Mongo).
+
+    Args:
+        settings: 환경 설정. None 이면 프로세스 단일 인스턴스.
+        raw_store: crawl 과 공용으로 쓸 raw_store(in-process PoC 공유용). None 이면
+            ``build_raw_page_store`` 로 생성한다(운영은 프로세스별 Mongo 연결 → DB 공유).
+    """
+    resolved = settings or get_settings()
+    store = raw_store or build_raw_page_store(resolved)
+    if not resolved.use_real_adapters:
+        return ChunkingWorkerDeps(
+            raw_store=store,
+            dense_embedder=FakeDenseEmbedder(),
+            sparse_embedder=FakeSparseEmbedder(),
+            store=FakeQdrantPoolStore(),
+            cache=FakeEmbeddingCache(),
+            jobs=FakeIngestionJobsRepository(),
+            doc_type_resolver=None,
+        )
+    from app.ingestion.embedder.dense import E5DenseEmbedder
+    from app.ingestion.embedder.sparse import BM25SparseEmbedder
+    from app.storage.jobs import MongoIngestionJobsRepository
+    from app.storage.mongo_cache import MongoEmbeddingCache
+    from app.storage.qdrant_client import QdrantPoolStore
+
+    # Qdrant 컬렉션은 임베더의 실제 차원으로 부트스트랩해야 한다. from_settings 의
+    # dense_dimension 기본값(1024)에 의존하면, e5-large(1024) 가 아닌 모델을
+    # RAG_DENSE_EMBEDDING_MODEL 로 설정했을 때 컬렉션 차원과 벡터 차원이 어긋나
+    # upsert 가 실패한다. 따라서 임베더가 보고한 dimension 을 명시 전달한다
+    # (rag build_real_deps 패턴 정합).
+    dense_embedder = E5DenseEmbedder(model_name=resolved.dense_embedding_model)
+    return ChunkingWorkerDeps(
+        raw_store=store,
+        dense_embedder=dense_embedder,
+        sparse_embedder=BM25SparseEmbedder(),
+        store=QdrantPoolStore.from_settings(resolved, dense_dimension=dense_embedder.dimension),
+        cache=MongoEmbeddingCache.from_settings(resolved),
+        jobs=MongoIngestionJobsRepository.from_settings(resolved),
+        doc_type_resolver=build_document_analyzer(resolved),
+    )
+
+
+def build_attachment_extraction_deps(
+    settings: Settings | None = None,
+    *,
+    raw_store: RawPageStore | None = None,
+    publisher: QueuePublisher,
+    chunking_routing_key: str = QUEUE_CHUNKING,
+) -> AttachmentExtractionDeps:
+    """Attachment Worker 의존성을 조립한다(download/extract → raw_attachments 갱신 → chunking)."""
+    resolved = settings or get_settings()
+    return AttachmentExtractionDeps(
+        raw_store=raw_store or build_raw_page_store(resolved),
+        downloader=DefaultAttachmentDownloader(
+            download_dir=resolved.attachment_download_dir,
+            access_token=resolved.atlassian_access_token.get_secret_value() or None,
+            timeout_seconds=resolved.attachment_download_timeout_seconds,
+        ),
+        publisher=publisher,
+        jobs=None,
+        chunking_routing_key=chunking_routing_key,
+    )

@@ -1,0 +1,21 @@
+{
+  "conversation_id": "conversation-acl-synthetic",
+  "user_id": "user-acl-synthetic",
+  "original_question": "제한된 운영 문서 찾아줘",
+  "query": "운영 절차 접근 권한 문서",
+  "history_decision": "new_topic",
+  "preserved_context": {
+    "summary": "Restricted operations runbook lookup",
+    "entities": ["runbook", "access"],
+    "turn_refs": []
+  },
+  "reset_required": true,
+  "metadata": {
+    "locale": "ko-KR",
+    "space_keys": ["RUNBOOK"],
+    "groups": ["ops-team", "sre"],
+    "labels": ["restricted"],
+    "document_types": ["guide"],
+    "source_types": ["confluence"]
+  }
+}
