@@ -130,6 +130,17 @@ python -m examples.demo_data_layer
 `samples/`의 페이지와 첨부 파일을 PageObject로 로드한 뒤 청크로 분할하는 과정을 콘솔에 요약
 출력한다. 외부 서비스 없이 동작한다.
 
+### Smoke — 수집 API
+
+```bash
+python scripts/smoke_ingest_api.py
+```
+
+FastAPI route 기준으로 `GET /ml/ingest/health` → `POST /ml/ingest` → `GET
+/ml/ingest/status/{jobId}`를 실행한다. 기본값은 `json_fixture` + fake/in-memory adapter라
+Confluence, Qdrant, MongoDB, OpenAI, BFF callback 없이 동작한다. 실 Confluence/Admin Key
+수집 smoke는 운영 자격증명과 BFF callback URL을 주입한 별도 환경에서 수행한다.
+
 ---
 
 ## 외부 서비스

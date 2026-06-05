@@ -933,8 +933,10 @@ BE 통합 API 스펙 수신(`api-spec-BE-adjust.md`, 2026-05-21). PDF #2(API Spe
   보류), 정책절차 Precision 추가 개선(보류), 생성기 prompt(Agent 이관), non-streaming P95(인프라 이관).
   → **본 담당자 능동 작업 종료(실질 완료).**
 - **잔여 (Milestone D)**: feature13 PDF #3(BE ACL 컬럼, 외부 협의) / feature17c 이관·보류분(위)
-  / 실제 ingestion smoke
+  / 실 Confluence ingestion smoke
 - **Admin Key 수명주기**: 말소 주체는 BFF/Auth Server로 확정. ML은 수집 job terminal 상태
   (`COMPLETED`/`FAILED`) 도달 후 `RAG_BFF_ADMIN_KEY_REVOKE_URL` callback으로 revoke 요청만
   보낸다. 실제 BFF endpoint URL/인증 토큰 값은 backend 배포 설정에서 주입 필요.
+- **Local ingestion smoke**: `scripts/smoke_ingest_api.py` 추가. `json_fixture` + fake/in-memory
+  adapter로 `/ml/ingest` route를 통과해 샘플 92페이지 `COMPLETED`/실패 0건을 확인했다.
 - **외부 협의 대기**: feature13 PDF #3 (BE 명세), BFF revoke callback endpoint 확정, worker 운영 위치
