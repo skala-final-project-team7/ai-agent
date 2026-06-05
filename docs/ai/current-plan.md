@@ -79,7 +79,7 @@
 - [x] `DocumentSourceAdapter` 인터페이스 + `ActiveIds`/`ChangeEvent` (`app/adapters/base.py`)
 - [x] `JsonFixtureSourceAdapter` — `samples/*.json` → PageObject 변환 (92p 로드 검증, PoC ACL 합성)
 - [x] `AtlassianSourceAdapter` — vendored Data Ingestion Agent workflow를 `DocumentSourceAdapter` 계약으로 감싸 PageObject 변환까지 통합. 현재 ACL은 PoC `space_key` 합성.
-- [~] `AtlassianSourceAdapter` 운영 ACL 보강 — Admin Key header 설정(`RAG_ATLASSIAN_USE_ADMIN_KEY`) + `restriction/byOperation/read` 조회 client + read restriction 응답 → `allowed_users`/`allowed_groups` 매핑 seam 구현 완료. Confluence group 식별자 우선순위(`RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`)와 prefix(`RAG_ATLASSIAN_GROUP_ACL_PREFIX`) 설정 seam도 추가되어 BFF JWT `groups` claim 형식에 맞출 수 있다. Restriction empty 정책은 `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing|space_fallback`으로 명시화했다. 남은 작업: 실제 claim 값 합의, 상위 folder/page/space permission 추가 조회 로직 확정.
+- [~] `AtlassianSourceAdapter` 운영 ACL 보강 — Admin Key header 설정(`RAG_ATLASSIAN_USE_ADMIN_KEY`) + `restriction/byOperation/read` 조회 client + read restriction 응답 → `allowed_users`/`allowed_groups` 매핑 seam 구현 완료. Confluence group 식별자 우선순위(`RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`)와 prefix(`RAG_ATLASSIAN_GROUP_ACL_PREFIX`) 설정 seam도 추가되어 BFF JWT `groups` claim 형식에 맞출 수 있다. Restriction empty 정책은 `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated|mark_missing|space_fallback`으로 명시화했고, 기본값은 최신 ingestion/rag 공유 계약에 맞춰 `allow_authenticated` + `RAG_ATLASSIAN_PUBLIC_ACL_GROUP=*`이다. 남은 작업: 실제 claim 값 합의, 상위 folder/page/space permission 추가 조회 로직 확정.
 
 ## Milestone B — Ingestion 파이프라인
 
@@ -228,14 +228,15 @@
   `build_real_deps` 배선 + feature17c 실 경로 재평가 검증. 의존성 방향: sentence-transformers /
   fastembed / qdrant-client / pymongo)
 
-### feature6: 문서 분석기 + 첨부 분석기 + Ingestion 그래프 — ⚠ 담당 분리
+### feature6: 문서 분석기 + 첨부 분석기 + Ingestion 그래프 — ✅ 통합 완료
 
 - **본 담당자 몫(Pipeline + Storage)**: 첨부 파일 분석기(`app/ingestion/attachment_analyzer.py`),
   삭제 동기화(`app/ingestion/sync.py`), `ingestion_jobs` 기록 헬퍼(`app/storage/jobs.py` —
   외부 저장소 어댑터는 `app/storage/` 패키지 일관성 정합, `app/CLAUDE.md` §8).
-- **Agent 담당자 몫**: 문서 분석기(`app/ingestion/document_analyzer.py` [Agent]).
-- **통합 지점**: Ingestion 그래프 조립(`app/pipeline/ingestion_graph.py`) — Agent 노드 stub →
-  전달 후 교체.
+- **Agent 담당자 몫**: 문서 분석기(`app/ingestion/document_analyzer.py` [Agent]) 구현 완료.
+- **통합 지점**: Ingestion 그래프 조립(`app/pipeline/ingestion_graph.py`) — `manage_document_analyzer`
+  기본 노드가 `DocumentAnalyzer`를 호출한다. PoC/테스트는 Fake classifier/cache, 운영
+  `build_real_ingestion_deps()`는 OpenAI classifier + MySQL `space_doc_type_cache`를 주입한다.
 - 테스트: 첨부 분석·Reconciliation 고스트 삭제·그래프 흐름(본 담당자, mock/stub),
   mock LLM으로 doc_type 판별·캐싱·Fallback(Agent 담당자)
 
@@ -245,7 +246,8 @@
 - [x] (본 담당자) `ingestion_jobs` 기록 헬퍼 [Storage] — Phase 2 완료 (2026-05-18, `152d2e9`)
 - [x] (본 담당자) 삭제 동기화 [Pipeline] — Phase 3 완료 (2026-05-18, `8ceec58`)
 - [x] (본 담당자) Ingestion 그래프 조립 — Phase 4 완료 (2026-05-18) — feature6 종결
-- [ ] (Agent 담당자) 문서 분석기 [Agent]
+- [x] (Agent 담당자) 문서 분석기 [Agent] — `DocumentAnalyzer` + `OpenAIDocTypeClassifier`
+  + `space_doc_type_cache` + ingestion graph wiring 완료 (2026-06-05 최신 RAG 동기화)
 
 ## Milestone C — Query 파이프라인
 
@@ -472,7 +474,9 @@
 
 ## Milestone D — 운영성 마무리 (2026-05-19 이후, ML 코드 리뷰 반영)
 
-> **배경**: Agent 통합 3/4 완료 + Mode B 실 GPT-4o 시연 성공 (`ac66fee`) 후 잔여 작업.
+> **배경**: 당시 Agent 통합 3/4 완료 + Mode B 실 GPT-4o 시연 성공 (`ac66fee`) 후 잔여
+> 작업으로 시작했다. 2026-06-05 기준 문서 분석기까지 ingestion graph에 연결되어
+> Agent 통합 4/4 상태다.
 > 2026-05-18 ML 코드 리뷰(`0518_RAG.pdf`) 4개 항목 + 본 담당자 영역 자체 발견한
 > 운영성 fix 3건을 묶어 진행한다. 본 Milestone 완료 시 본 담당자 영역 진척도 100%
 > + 운영 진입 직전 단계 완성.
@@ -800,16 +804,17 @@ BE 통합 API 스펙 수신(`api-spec-BE-adjust.md`, 2026-05-21). PDF #2(API Spe
 
 ### feature18: 외부 의존 / 부가 — P3
 
-- **Data Ingestion Agent 책임 협의** — `data-ingestion-agent` / `data-sync-agent` 가
-  본 저장소 외부 (백엔드/Data 담당자) 영역인지 합의. `document_analyzer_stub` 처리
-  방향 결정 (별도 Agent 패키지 받기 vs 본 저장소 직접 작성)
+- **Data Ingestion Agent 책임 협의** — `data-ingestion-agent` / `data-sync-agent` 기능은
+  `ai-agent`에 병합 진행 중이다. `document_analyzer_stub`는 기본 경로에서 제거됐고,
+  `DocumentAnalyzer`가 ingestion graph에 wiring 완료됐다. 남은 협의는 worker 운영 위치,
+  Admin Key 수명주기, backend/infra 실행 배선이다.
 - ~~feature4-B PDF/CSV 첨부 분할기~~ — ✅ 완료 (2026-05-22, feature4-B로 이동·종결)
 - **(D) Function Calling 강제 + (E) 자연어 출처 인용 패턴** — Agent 담당자 영역
   (answer_generation_agent prompt template 갱신 요청)
 
 작업 항목:
 
-- [ ] Data Ingestion Agent 책임 협의 + document_analyzer 방향 확정
+- [x] Data Ingestion Agent 책임 협의 + document_analyzer 방향 확정
 - [x] feature4-B PDF/CSV 첨부 분할기 (2026-05-22 완료)
 - [ ] (D) Function Calling + (E) 자연어 출처 — Agent 담당자 보고
 
@@ -909,11 +914,11 @@ BE 통합 API 스펙 수신(`api-spec-BE-adjust.md`, 2026-05-21). PDF #2(API Spe
 
 ---
 
-## 완료 현황 (2026-05-26 갱신)
+## 완료 현황 (2026-06-05 갱신)
 
 - **본 담당자 (Pipeline + Storage) 영역 진척도**: **~100%** (운영성·관측성·streaming
   + Rate Limit fallback + 운영 라이브 smoke + LLM 커스텀 메트릭 + 평가 인프라 완성)
-- **완료 (Milestone A·B·C + Agent 통합 3/4 + (B) 운영 transport + (A 인프라) streaming +
+- **완료 (Milestone A·B·C + Agent 통합 4/4 + (B) 운영 transport + (A 인프라) streaming +
   Mode B 시연 검증 + Milestone D feature12 + feature13 PDF #2(/ml/query 마이그레이션) +
   feature14 + feature15 + feature16 + feature17a + feature17b + feature19 SSE status 이벤트)**
 - **실 연동(운영 어댑터) 완료**: feature5-B(E5/BM25/Qdrant/Mongo 클라이언트, `633d821`/`2835ccd`)
@@ -927,5 +932,15 @@ BE 통합 API 스펙 수신(`api-spec-BE-adjust.md`, 2026-05-21). PDF #2(API Spe
   잔여는 전부 타 팀/Agent/인프라 이관·보류 항목 — Pool 가중치 그리드 서치(도구 ○ / 미실행,
   보류), 정책절차 Precision 추가 개선(보류), 생성기 prompt(Agent 이관), non-streaming P95(인프라 이관).
   → **본 담당자 능동 작업 종료(실질 완료).**
-- **잔여 (Milestone D)**: feature13 PDF #3(BE ACL 컬럼, 외부 협의) / feature17c 이관·보류분(위) / feature18
-- **외부 협의 대기**: feature13 PDF #3 (BE 명세), feature18(Data Agent / Agent 담당자 영역)
+- **잔여 (Milestone D)**: feature13 PDF #3(BE ACL 컬럼, 외부 협의) / feature17c 이관·보류분(위)
+  / 실 Confluence ingestion smoke
+- **Admin Key 수명주기**: 말소 주체는 BFF/Auth Server로 확정. ML은 수집 job terminal 상태
+  (`COMPLETED`/`FAILED`) 도달 후 `RAG_BFF_ADMIN_KEY_REVOKE_URL` callback으로 revoke 요청만
+  보낸다. 실제 BFF endpoint URL/인증 토큰 값은 backend 배포 설정에서 주입 필요.
+- **Local ingestion smoke**: `scripts/smoke_ingest_api.py` 추가. `json_fixture` + fake/in-memory
+  adapter로 `/ml/ingest` route를 통과해 샘플 92페이지 `COMPLETED`/실패 0건을 확인했다.
+- **임시 Confluence Basic Auth smoke**: backend OAuth 완료 전 실제 Confluence/Admin Key 동작을
+  확인하기 위해 `scripts/smoke_confluence_basic.py`를 추가한다. 이 스크립트는 production
+  adapter가 아니며, API Token Basic Auth로 `/api/v2/pages` 일반/Admin Key 조회 차이와
+  `restriction/byOperation/read` 응답 shape만 read-only로 확인한다.
+- **외부 협의 대기**: feature13 PDF #3 (BE 명세), BFF revoke callback endpoint 확정, worker 운영 위치

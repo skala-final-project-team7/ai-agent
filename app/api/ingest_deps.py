@@ -24,11 +24,17 @@ from dataclasses import dataclass
 
 from app.adapters.base import DocumentSourceAdapter
 from app.adapters.factory import build_source_adapter
+from app.api.admin_key_revoke import (
+    AdminKeyRevokeNotifier,
+    build_admin_key_revoke_notifier,
+)
 from app.config import Settings
+from app.ingestion.bootstrap import build_soft_delete_store
 from app.ingestion.crawler import CrawlRequest, CrawlResult
 from app.ingestion.pipeline import run_poc_ingestion
 from app.ingestion.sync import DeltaSyncRequest, DeltaSyncResult, run_delta_sync
 from app.ingestion.workers.publisher import FakeQueuePublisher
+from app.ingestion.workers.sync_worker import SyncWorker, SyncWorkerDeps
 from app.storage.ingest_jobs import IngestJobStore, InMemoryIngestJobStore, MongoIngestJobStore
 from app.storage.raw_store import FakeRawPageStore
 
@@ -45,6 +51,8 @@ class IngestDeps:
     run_crawl: CrawlRunner
     run_delta: DeltaRunner
     previous_snapshot_path: str
+    sync_worker: SyncWorker | None = None
+    admin_key_revoke_notifier: AdminKeyRevokeNotifier | None = None
 
 
 def build_ingest_deps(settings: Settings) -> IngestDeps:
@@ -85,6 +93,8 @@ def build_ingest_deps(settings: Settings) -> IngestDeps:
         run_crawl=_run_crawl,
         run_delta=_run_delta,
         previous_snapshot_path=resolved_previous_snapshot_path(settings),
+        sync_worker=SyncWorker(SyncWorkerDeps(store=build_soft_delete_store(settings))),
+        admin_key_revoke_notifier=build_admin_key_revoke_notifier(settings),
     )
 
 

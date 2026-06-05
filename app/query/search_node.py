@@ -104,15 +104,10 @@ def _hybrid_search_acl_guarded(
     # --- 3. Pool 검색 + 결합 ---
     pool_weights = state.pool_weights or _DEFAULT_POOL_WEIGHTS
     router_filters = _coerce_metadata_filters(state.metadata_filters)
-    # api-spec v2.2.0 §2-1 — 요청 ``spaceKey`` 는 검색 대상 스페이스를 지정하는 **하드
-    # 스코프**(AND)다. 라우터의 LLM 추정 metadata filter 와 달리 0건 fallback 에서도
-    # 완화하지 않는다(스페이스/권한 범위 경계 유지). ``space_key`` 는 Qdrant payload
-    # 인덱스 필드이므로 metadata_filters 의 ``space_key`` match 로 결합한다.
-    space_filter: dict[str, str | list[str]] = (
-        {"space_key": state.space_key} if state.space_key else {}
-    )
-    # 요청 spaceKey 가 라우터 추정 space_key 보다 우선한다(스코프 강제).
-    metadata_filters = {**(router_filters or {}), **space_filter} or None
+    # api-spec v2.4.0 — 요청 본문에는 더 이상 ``spaceKey`` 가 없다. 검색은 cross-space 로
+    # 수행하되, 라우터가 추출한 metadata filter 는 적용한다. 권한 경계는 acl_filter 로만
+    # 강제한다.
+    metadata_filters = router_filters
 
     candidates = _search_and_fuse(
         store=store,
@@ -130,7 +125,6 @@ def _hybrid_search_acl_guarded(
     # 불일치할 수 있다. 불일치 시 must 결합으로 전체 검색이 0건이 되어(query_points 에 score
     # 하한이 없어 필터 통과 포인트가 없으면 곧 0건) 첨부·특정 유형 명시 질의가 통째로 검색
     # 실패하던 문제(EVAL-021/024/044/046)를 방지한다. 0건이면 **라우터 추정 필터만** 완화하고
-    # 요청 spaceKey 하드 스코프는 유지한 채 1회 재검색한다(권한/범위 경계는 완화하지 않음).
     # 라우터 추정 필터가 애초에 없었으면 완화할 대상이 없으므로 재검색하지 않는다.
     if not candidates and router_filters:
         candidates = _search_and_fuse(
@@ -141,7 +135,7 @@ def _hybrid_search_acl_guarded(
             sparse_query_vectors=sparse_query_vectors,
             pool_weights=pool_weights,
             top_k=top_k,
-            metadata_filters=(space_filter or None),
+            metadata_filters=None,
         )
 
     state.candidates = candidates

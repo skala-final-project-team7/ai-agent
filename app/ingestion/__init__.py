@@ -15,11 +15,11 @@
 - jobs.py               ingestion_jobs 상태 기록 헬퍼
 
 구현 상태:
+- document_analyzer.py    DocumentAnalyzer + Fake/OpenAI classifier + space_doc_type_cache 연동
 - attachment_analyzer.py  AttachmentAnalysisResult + analyze_attachment [feature6 Phase 1]
 - sync.py                 ReconciliationResult + reconcile_deletions [feature6 Phase 3]
-- chunker/                feature3-A·3-B·4-A 완료 (PDF/CSV = feature4-B 대기)
+- chunker/                feature3-A·3-B·4-A·4-B 완료 (본문 + docx/xlsx/pdf/csv 첨부 청킹)
 - embedding.py / vector_store.py / indexer.py  feature5-A·5-B 완료
-- document_analyzer.py    미구현 (계획 — Agent 담당자 몫)
 - jobs.py                 app/storage/jobs.py 로 이전 (외부 저장소 어댑터 일관성, feature6 Phase 2)
 """
 

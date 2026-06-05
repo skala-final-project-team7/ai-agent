@@ -103,8 +103,10 @@ payload 필드로 복원한다.
 >   `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`(`id,groupId,name` 기본)와
 >   `RAG_ATLASSIAN_GROUP_ACL_PREFIX`로 정규화할 수 있으나, 최종 문자열은 BFF JWT
 >   `groups` claim과 정확히 일치해야 한다. restriction empty 기본 정책은
->   `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing`이며, 이때 `allowed_groups=[]`,
->   `allowed_users=[]`로 두어 색인 단계에서 `INVALID_ACL` 처리한다. PoC/데모에서는
+>   기본 정책은 `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated`이며, 이때
+>   `allowed_groups=[RAG_ATLASSIAN_PUBLIC_ACL_GROUP]`(기본 `"*"`)를 부여한다. RAG 검색은
+>   동일 sentinel을 모든 principal의 group 조건에 주입한다. 보수 운영이 필요하면
+>   `mark_missing`으로 바꿔 빈 ACL을 색인 단계에서 `INVALID_ACL` 처리할 수 있고, PoC/데모에서는
 >   `space_fallback`으로 `space:{space_key}` ACL을 합성할 수 있다.
 >
 > Payload는 `space_key` + `allowed_groups` + `allowed_users`를 **모두 인덱싱**한 채로 둔다.

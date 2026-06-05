@@ -28,7 +28,7 @@ from app.schemas.response import Source, Verification
 class HistoryTurn(BaseModel):
     """멀티턴 대화 1턴.
 
-    ``role`` 값은 api-spec v2.3.0 §2-1 에 따라 ``user`` / ``assistant`` lowercase다.
+    ``role`` 값은 api-spec v2.4.0 §2-1 에 따라 ``user`` / ``assistant`` lowercase다.
     메시지 저장값·외부 응답값·RAG wire 값을 동일하게 유지한다. 구버전 대문자 입력은
     하위 호환을 위해 받아들이되 내부 표준값은 lowercase로 정규화한다.
     """
@@ -39,7 +39,7 @@ class HistoryTurn(BaseModel):
     @field_validator("role")
     @classmethod
     def _normalize_role(cls, value: str) -> str:
-        """role을 api-spec v2.3.0 lowercase 표기로 정규화한다(대소문자 무관 수용)."""
+        """role을 api-spec v2.4.0 lowercase 표기로 정규화한다(대소문자 무관 수용)."""
         normalized = value.strip().lower()
         if normalized not in {"user", "assistant"}:
             raise ValueError("role must be 'user' or 'assistant'")
@@ -70,9 +70,6 @@ class RagState(BaseModel):
     user_id: str
     conversation_id: str | None = None
     groups: list[str] = Field(default_factory=list)
-    # feature13 — BFF가 전달하는 검색 대상 Confluence 스페이스(2단계는 고정값).
-    # 현재는 passthrough 로 보관만 하며, 검색 메타데이터 필터 반영은 후속 작업으로 보류.
-    space_key: str = ""
     # ACL Pre-filtering (§4.2)
     acl_filter: dict[str, Any] | None = None
     # 멀티턴 히스토리 (§4.3)

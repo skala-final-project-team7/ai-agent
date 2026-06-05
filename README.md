@@ -72,7 +72,8 @@ RAG_ATLASSIAN_ACCESS_TOKEN=...
 RAG_ATLASSIAN_USE_ADMIN_KEY=false
 RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER=id,groupId,name
 RAG_ATLASSIAN_GROUP_ACL_PREFIX=
-RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing
+RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated
+RAG_ATLASSIAN_PUBLIC_ACL_GROUP=*
 RAG_RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2F
 RAG_MONGO_URI=mongodb://localhost:27017
 RAG_MONGO_DB=lina_rag
@@ -129,6 +130,35 @@ python -m examples.demo_data_layer
 `samples/`의 페이지와 첨부 파일을 PageObject로 로드한 뒤 청크로 분할하는 과정을 콘솔에 요약
 출력한다. 외부 서비스 없이 동작한다.
 
+### Smoke — 수집 API
+
+```bash
+python scripts/smoke_ingest_api.py
+```
+
+FastAPI route 기준으로 `GET /ml/ingest/health` → `POST /ml/ingest` → `GET
+/ml/ingest/status/{jobId}`를 실행한다. 기본값은 `json_fixture` + fake/in-memory adapter라
+Confluence, Qdrant, MongoDB, OpenAI, BFF callback 없이 동작한다. 실 Confluence/Admin Key
+수집 smoke는 운영 자격증명과 BFF callback URL을 주입한 별도 환경에서 수행한다.
+
+### Smoke — 임시 Confluence Basic Auth/Admin Key
+
+백엔드 OAuth가 준비되기 전 실제 Confluence 응답 형식과 Admin Key ACL 조회 가능성을 확인하는
+임시 smoke다. production ingestion 경로는 OAuth access token을 사용하므로, 이 스크립트는 운영
+adapter와 분리된 확인 도구로만 사용한다.
+
+```bash
+export CONF_BASE_URL="https://<site>.atlassian.net/wiki"
+export ATLASSIAN_EMAIL="<admin-email>"
+export ATLASSIAN_API_TOKEN="<atlassian-api-token>"
+
+python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<page-id>"
+```
+
+출력은 일반 조회 page 수, Admin Key header 조회 page 수, Admin Key에서만 보이는 page id,
+sample page의 일반/Admin Key 조회 HTTP status, read restriction user/group 수를 요약한다.
+토큰 값은 출력하지 않으며 Admin Key 말소도 수행하지 않는다.
+
 ---
 
 ## 외부 서비스
@@ -142,6 +172,8 @@ python -m examples.demo_data_layer
 - **RabbitMQ** — attachment/chunking worker queue
 - **Confluence/Atlassian API** — 실 수집 source
 - **OpenAI API** — 운영 LLM provider
+- **BFF callback** — 수집 job 종료 후 Admin Key revoke 요청
+  (`RAG_BFF_ADMIN_KEY_REVOKE_URL`, 미설정 시 no-op)
 
 스키마 상세는 [`docs/db-schema.md`](docs/db-schema.md).
 

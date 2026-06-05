@@ -17,6 +17,31 @@
 본 저장소는 `access_token` + `cloudid`를 입력으로 받아 데이터 수집 API를 호출한다.
 모든 데이터 수집 요청에 `Authorization: Bearer {access_token}` 헤더가 필요하다.
 
+## 임시 Confluence Basic Auth smoke
+
+백엔드 OAuth 구현 전에는 production ingestion adapter에 API Token Basic Auth를 섞지 않고,
+별도 확인 스크립트로 실제 Confluence/Admin Key 동작만 검증한다.
+
+```bash
+export CONF_BASE_URL="https://<site>.atlassian.net/wiki"
+export ATLASSIAN_EMAIL="<admin-email>"
+export ATLASSIAN_API_TOKEN="<atlassian-api-token>"
+
+python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<restricted-page-id>"
+```
+
+이 smoke가 확인하는 항목:
+
+- `/api/v2/pages?limit={n}&body-format=storage` 일반 호출 결과 수
+- 같은 API에 `Atl-Confluence-With-Admin-Key: true` header를 붙인 결과 수
+- Admin Key header에서만 보이는 page id 목록
+- sample page의 일반 호출 HTTP status와 Admin Key 호출 HTTP status
+- `/rest/api/content/{pageId}/restriction/byOperation/read`의 user/group restriction 개수
+
+이 스크립트는 read-only 확인 도구다. Admin Key 발급/말소는 수행하지 않는다. 운영 경로에서는
+BFF/Auth Server가 OAuth access token과 Admin Key 수명주기를 관리하고, ML은 BFF가 전달한
+OAuth access token을 사용한다.
+
 ## 데이터 수집 API
 
 API URL 형식: `https://api.atlassian.com/ex/confluence/{cloudid}/rest/api/...`
@@ -126,9 +151,11 @@ Atl-Confluence-With-Admin-Key: true
 - **운영 Confluence/Admin Key 경로:** page restriction API를 도입해 `allowed_users` /
   `allowed_groups`를 채우는 방향으로 전환한다.
 - **restriction empty 정책:** page-level restriction이 비어 있을 때 기본값은
-  `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing`이다. 이 정책은 ACL을 빈 배열로
-  남겨 색인 단계에서 `INVALID_ACL`로 차단한다. PoC/데모에서 스페이스 단위 접근을 허용하려면
-  `space_fallback`으로 바꿔 `allowed_groups=["space:{space_key}"]`를 합성할 수 있다.
+  `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated`이다. 이 정책은
+  `allowed_groups=[RAG_ATLASSIAN_PUBLIC_ACL_GROUP]`(기본 `"*"`)를 부여하고, RAG 검색은 동일
+  sentinel을 모든 principal의 group 조건에 주입한다. 보수 운영이 필요하면 `mark_missing`으로
+  바꿔 빈 ACL을 색인 단계에서 `INVALID_ACL`로 차단할 수 있다. PoC/데모에서 스페이스 단위
+  접근을 허용하려면 `space_fallback`으로 바꿔 `allowed_groups=["space:{space_key}"]`를 합성할 수 있다.
 - **미결:** 상위 folder/page restriction 또는 space permission을 실제로 추가 조회해 ACL을
   계산하는 운영 강화 로직은 별도 endpoint 명세와 BE/infra 협의 후 구현한다.
 

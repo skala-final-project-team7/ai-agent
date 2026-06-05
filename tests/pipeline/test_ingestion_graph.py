@@ -2,7 +2,8 @@
 
 설계서 §3.1 + Big Picture 정합 — 단일 PageObject 를 analyze → chunk → embed_upsert
 3 노드를 거쳐 Qdrant + chunk_lookup 에 적재한다. 각 단계 종료 시 IngestionJobs 적재.
-Agent 노드(문서 분석기)는 stub. 본문/첨부 모두 동일 그래프에서 처리.
+Agent 노드(문서 분석기)는 Fake classifier/cache 기반 DocumentAnalyzer 기본값. 본문/첨부
+모두 동일 그래프에서 처리.
 
 외부 의존성 0 — :memory: Qdrant + Fake everything + chunk_attachment 주입 가능 (파일
 시스템 의존성 회피).
@@ -23,9 +24,9 @@ from app.ingestion.embedder.base import FakeDenseEmbedder, FakeSparseEmbedder  #
 from app.pipeline.ingestion_graph import (  # noqa: E402
     IngestionGraphDeps,
     build_ingestion_graph,
+    manage_document_analyzer,
     run_ingestion,
 )
-from app.pipeline.stubs import document_analyzer_stub  # noqa: E402
 from app.schemas.chunk import Chunk, ChunkMetadata  # noqa: E402
 from app.schemas.enums import (  # noqa: E402
     AttachmentType,
@@ -155,8 +156,8 @@ def deps() -> IngestionGraphDeps:
 # --- IngestionGraphDeps 기본값 회귀 ---
 
 
-def test_deps_default_document_analyzer_is_stub() -> None:
-    """document_analyzer_node 기본값이 stub (Agent 코드 전달 시 교체 지점)."""
+def test_deps_default_document_analyzer_is_real_adapter_wrapper() -> None:
+    """document_analyzer_node 기본값이 Fake 기반 DocumentAnalyzer wrapper."""
     settings = _settings()
     store = QdrantPoolStore.in_memory(settings, dense_dimension=8)
     store.bootstrap_collections()
@@ -168,7 +169,16 @@ def test_deps_default_document_analyzer_is_stub() -> None:
         chunk_lookup=FakeChunkTextLookup(),
         jobs=FakeIngestionJobsRepository(),
     )
-    assert deps.document_analyzer_node is document_analyzer_stub
+    assert deps.document_analyzer_node is manage_document_analyzer
+
+
+def test_manage_document_analyzer_uses_fake_default() -> None:
+    """PoC 기본 문서 분석기는 외부 LLM/DB 없이 operation doc_type을 채운다."""
+    state = IngestionState(page=_page())
+
+    final = manage_document_analyzer(state)
+
+    assert final.doc_type == "operation"
 
 
 # --- 본문만 (첨부 없음) ---

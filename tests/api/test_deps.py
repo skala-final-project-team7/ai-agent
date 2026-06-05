@@ -477,8 +477,7 @@ def test_build_poc_ingestion_deps_returns_all_fake_adapters() -> None:
     """PoC ingestion 부트스트랩 — 모든 어댑터가 Fake 인스턴스 (외부 의존성 0)."""
     from app.api.deps import build_poc_ingestion_deps
     from app.ingestion.chunker import chunk_attachment as real_chunk_attachment
-    from app.pipeline.ingestion_graph import IngestionGraphDeps
-    from app.pipeline.stubs import document_analyzer_stub
+    from app.pipeline.ingestion_graph import IngestionGraphDeps, manage_document_analyzer
     from app.storage.chunk_lookup import FakeChunkTextLookup
     from app.storage.jobs import FakeIngestionJobsRepository
     from app.storage.mongo_cache import FakeEmbeddingCache
@@ -491,8 +490,8 @@ def test_build_poc_ingestion_deps_returns_all_fake_adapters() -> None:
     assert isinstance(deps.cache, FakeEmbeddingCache)
     assert isinstance(deps.chunk_lookup, FakeChunkTextLookup)
     assert isinstance(deps.jobs, FakeIngestionJobsRepository)
-    # Agent 노드는 stub 기본값
-    assert deps.document_analyzer_node is document_analyzer_stub
+    # Agent 노드는 Fake classifier/cache 기반 DocumentAnalyzer wrapper 기본값
+    assert deps.document_analyzer_node is manage_document_analyzer
     # chunk_attachment_fn 은 실 함수 default — 운영 시점에 fake 주입 가능
     assert deps.chunk_attachment_fn is real_chunk_attachment
 
@@ -514,13 +513,15 @@ def test_build_poc_ingestion_deps_bootstrap_collections() -> None:
 def patched_real_ingestion_adapters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> dict[str, Any]:
-    """build_real_ingestion_deps 가 호출하는 운영 어댑터 6종을 가짜로 대체.
+    """build_real_ingestion_deps 가 호출하는 운영 어댑터를 가짜로 대체.
 
     - E5DenseEmbedder / BM25SparseEmbedder (lazy import — 기존 patched_real_adapters와 동일 패턴)
     - QdrantPoolStore.from_settings → :memory:
     - MongoEmbeddingCache.from_settings → FakeEmbeddingCache
     - MongoChunkTextLookup.from_settings → FakeChunkTextLookup
     - MongoIngestionJobsRepository.from_settings → FakeIngestionJobsRepository
+    - OpenAIDocTypeClassifier → sentinel
+    - MySQLSpaceDocTypeCache.from_settings → FakeSpaceDocTypeCache
     """
     from app.storage.chunk_lookup import FakeChunkTextLookup, MongoChunkTextLookup
     from app.storage.jobs import (
@@ -528,6 +529,7 @@ def patched_real_ingestion_adapters(
         MongoIngestionJobsRepository,
     )
     from app.storage.mongo_cache import FakeEmbeddingCache, MongoEmbeddingCache
+    from app.storage.space_doc_type_cache import FakeSpaceDocTypeCache, MySQLSpaceDocTypeCache
 
     captured: dict[str, Any] = {
         "dense_init": None,
@@ -536,6 +538,8 @@ def patched_real_ingestion_adapters(
         "cache_from_settings": None,
         "lookup_from_settings": None,
         "jobs_from_settings": None,
+        "doc_classifier_init": None,
+        "doc_cache_from_settings": None,
     }
 
     def _fake_dense_factory(*args: Any, **kwargs: Any) -> _FakeRealDense:
@@ -570,9 +574,29 @@ def patched_real_ingestion_adapters(
         captured["jobs_from_settings"] = {"settings": settings, "kwargs": kwargs}
         return FakeIngestionJobsRepository()
 
+    class _FakeOpenAIDocTypeClassifier:
+        def __init__(self, *, api_key: str, model: str, **kwargs: Any) -> None:
+            captured["doc_classifier_init"] = {
+                "api_key_provided": bool(api_key),
+                "model": model,
+                "kwargs": kwargs,
+            }
+
+    def _fake_doc_cache_from_settings(
+        cls: type[MySQLSpaceDocTypeCache], settings: Settings
+    ) -> FakeSpaceDocTypeCache:
+        captured["doc_cache_from_settings"] = {"settings": settings}
+        return FakeSpaceDocTypeCache()
+
+    import app.ingestion.document_analyzer as document_analyzer_module
     import app.ingestion.embedder.dense as dense_module
     import app.ingestion.embedder.sparse as sparse_module
 
+    monkeypatch.setattr(
+        document_analyzer_module,
+        "OpenAIDocTypeClassifier",
+        _FakeOpenAIDocTypeClassifier,
+    )
     monkeypatch.setattr(dense_module, "E5DenseEmbedder", _fake_dense_factory)
     monkeypatch.setattr(sparse_module, "BM25SparseEmbedder", _fake_sparse_factory)
     monkeypatch.setattr(QdrantPoolStore, "from_settings", classmethod(_fake_store_from_settings))
@@ -585,6 +609,11 @@ def patched_real_ingestion_adapters(
     monkeypatch.setattr(
         MongoIngestionJobsRepository, "from_settings", classmethod(_fake_jobs_from_settings)
     )
+    monkeypatch.setattr(
+        MySQLSpaceDocTypeCache,
+        "from_settings",
+        classmethod(_fake_doc_cache_from_settings),
+    )
 
     return captured
 
@@ -592,7 +621,7 @@ def patched_real_ingestion_adapters(
 def test_build_real_ingestion_deps_wires_all_real_adapter_classes(
     patched_real_ingestion_adapters: dict[str, Any],
 ) -> None:
-    """운영 ingestion 부트스트랩 — 6 어댑터 모두 호출 + IngestionGraphDeps 시그니처 정합."""
+    """운영 ingestion 부트스트랩 — 운영 어댑터 모두 호출 + IngestionGraphDeps 정합."""
     from app.api.deps import build_real_ingestion_deps
     from app.pipeline.ingestion_graph import IngestionGraphDeps
 
@@ -606,8 +635,14 @@ def test_build_real_ingestion_deps_wires_all_real_adapter_classes(
     assert captured["cache_from_settings"] is not None
     assert captured["lookup_from_settings"] is not None
     assert captured["jobs_from_settings"] is not None
+    assert captured["doc_classifier_init"] is not None
+    assert captured["doc_cache_from_settings"] is not None
     # dense_dimension 은 어댑터 보고 값으로 전달 (E5 = 1024).
     assert captured["store_from_settings"]["dense_dimension"] == 1024
+    # 문서 분석기는 보조 LLM 모델을 사용한다.
+    assert captured["doc_classifier_init"]["model"] == _settings().llm_aux_model
+    assert deps.document_analyzer_node is not None
+    assert callable(deps.document_analyzer_node)
     # 운영 모드는 Fake 임베더 미사용 (PoC 경로 분리 회귀 보호).
     assert not isinstance(deps.dense_embedder, FakeDenseEmbedder)
     assert not isinstance(deps.sparse_embedder, FakeSparseEmbedder)

@@ -38,6 +38,7 @@ from app.storage.raw_store import FakeRawPageStore, RawPageStore
 
 if TYPE_CHECKING:
     from app.ingestion.document_analyzer import DocumentAnalyzer
+    from app.ingestion.soft_delete import SoftDeleteStore
 
 
 def build_raw_page_store(settings: Settings | None = None) -> RawPageStore:
@@ -137,3 +138,13 @@ def build_attachment_extraction_deps(
         jobs=None,
         chunking_routing_key=chunking_routing_key,
     )
+
+
+def build_soft_delete_store(settings: Settings | None = None) -> SoftDeleteStore:
+    """삭제 트리거(Webhook/Trash/Delta confirm)가 사용할 soft-delete store 를 조립한다."""
+    resolved = settings or get_settings()
+    if not resolved.use_real_adapters:
+        return FakeQdrantPoolStore()
+    from app.storage.qdrant_client import QdrantPoolStore
+
+    return QdrantPoolStore.from_settings(resolved)

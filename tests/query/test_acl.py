@@ -10,6 +10,7 @@ import json
 import pytest
 
 from app.query.acl import (
+    PUBLIC_ACL_GROUP,
     ACLViolationError,
     Principal,
     PrincipalExtractionError,
@@ -88,15 +89,15 @@ def test_build_acl_filter_has_should_or_structure() -> None:
     assert isinstance(should, list) and len(should) == 2
     by_key = {clause["key"]: clause["match"]["any"] for clause in should}
     # allowed_groups 가 사용자 그룹 중 하나와 매칭 OR allowed_users 가 user_id 포함
-    assert by_key["allowed_groups"] == ["cloud-platform", "sre"]
+    assert by_key["allowed_groups"] == ["cloud-platform", "sre", PUBLIC_ACL_GROUP]
     assert by_key["allowed_users"] == ["taesung"]
 
 
 def test_build_acl_filter_handles_empty_groups() -> None:
     acl_filter = build_acl_filter("taesung", [])
     by_key = {clause["key"]: clause["match"]["any"] for clause in acl_filter["should"]}
-    # 그룹이 없어도 두 절 모두 유지 — allowed_users 절로만 접근
-    assert by_key["allowed_groups"] == []
+    # 그룹이 없어도 public sentinel 과 allowed_users 절은 유지된다.
+    assert by_key["allowed_groups"] == [PUBLIC_ACL_GROUP]
     assert by_key["allowed_users"] == ["taesung"]
 
 
@@ -104,7 +105,13 @@ def test_build_acl_filter_does_not_alias_groups() -> None:
     groups = ["sre"]
     acl_filter = build_acl_filter("taesung", groups)
     groups.append("admin")  # 원본 리스트 변경이 필터에 영향을 주면 안 된다
-    assert acl_filter["should"][0]["match"]["any"] == ["sre"]
+    assert acl_filter["should"][0]["match"]["any"] == ["sre", PUBLIC_ACL_GROUP]
+
+
+def test_build_acl_filter_does_not_duplicate_public_acl_group() -> None:
+    acl_filter = build_acl_filter("taesung", [PUBLIC_ACL_GROUP])
+    groups_field = acl_filter["should"][0]["match"]["any"]
+    assert groups_field.count(PUBLIC_ACL_GROUP) == 1
 
 
 # --- @enforce_acl ---
