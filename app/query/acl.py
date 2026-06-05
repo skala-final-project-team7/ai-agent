@@ -12,6 +12,8 @@
   - 2026-05-17, 코드 리뷰 후속(P1-2) — _is_valid_acl_filter가 should 절 내부 구조까지
     검사하도록 강화 (잘못된 호출 조기 감지). enforce_acl docstring을 coroutine 반환 함수
     한정으로 정정
+  - 2026-06-05, api-spec v2.4.0 정합 — ingestion allow_authenticated 정책과 맞춰
+    모든 principal의 allowed_groups 매칭에 PUBLIC_ACL_GROUP("*") sentinel을 주입.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x, Pydantic 2.7+
@@ -51,6 +53,12 @@ class Principal(BaseModel):
 
     user_id: str
     groups: list[str] = Field(default_factory=list)
+
+
+# "모든 인증 사용자 허용" sentinel group — Ingestion 이 page-level read restriction 이 없는
+# 페이지의 allowed_groups 에 부여하는 토큰이다. 모든 principal 의 검색 ACL 필터에 항상
+# 주입해 인증 사용자라면 누구나 public 청크에 매칭되게 한다.
+PUBLIC_ACL_GROUP = "*"
 
 
 def extract_principal(jwt: str) -> Principal:
@@ -102,9 +110,13 @@ def extract_principal(jwt: str) -> Principal:
 def build_acl_filter(user_id: str, groups: list[str]) -> dict[str, Any]:
     """사용자 식별로 Qdrant ACL 필터(`should` = OR 결합)를 생성한다.
 
-    청크의 `allowed_groups`가 사용자 그룹 중 하나와 매칭되거나(OR) `allowed_users`가
-    user_id를 포함하면 접근 가능하다. 이 필터는 @enforce_acl을 통과한 검색 호출에서
-    다른 메타 필터와 `AND`로 결합된다 (db-schema.md §1.4).
+    청크의 `allowed_groups`가 사용자 그룹 중 하나 또는 public sentinel과 매칭되거나(OR)
+    `allowed_users`가 user_id를 포함하면 접근 가능하다. 이 필터는 @enforce_acl을 통과한
+    검색 호출에서 다른 메타 필터와 `AND`로 결합된다 (db-schema.md §1.4).
+
+    모든 인증 사용자에게 열린 페이지(Ingestion 의 ``allow_authenticated`` 정책)는
+    allowed_groups 에 ``PUBLIC_ACL_GROUP`` sentinel 을 갖는다. 따라서 사용자 그룹 목록에
+    이 sentinel 을 항상 추가해, 인증된 사용자라면 그룹이 없어도 public 청크를 볼 수 있게 한다.
 
     ACL 필드 모델은 `allowed_groups`/`allowed_users`로 결정되었다. 모델이 바뀌면
     (예: space_key 기반) 이 함수만 교체하면 되도록 필터 생성 로직을 여기에 격리한다
@@ -117,9 +129,12 @@ def build_acl_filter(user_id: str, groups: list[str]) -> dict[str, Any]:
     Returns:
         Qdrant 필터 dict (`{"should": [...]}`). RagState.acl_filter 계약(dict)과 정합한다.
     """
+    group_terms = list(groups)
+    if PUBLIC_ACL_GROUP not in group_terms:
+        group_terms.append(PUBLIC_ACL_GROUP)
     return {
         "should": [
-            {"key": "allowed_groups", "match": {"any": list(groups)}},
+            {"key": "allowed_groups", "match": {"any": group_terms}},
             {"key": "allowed_users", "match": {"any": [user_id]}},
         ]
     }

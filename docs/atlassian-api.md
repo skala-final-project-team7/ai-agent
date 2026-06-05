@@ -126,9 +126,11 @@ Atl-Confluence-With-Admin-Key: true
 - **운영 Confluence/Admin Key 경로:** page restriction API를 도입해 `allowed_users` /
   `allowed_groups`를 채우는 방향으로 전환한다.
 - **restriction empty 정책:** page-level restriction이 비어 있을 때 기본값은
-  `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing`이다. 이 정책은 ACL을 빈 배열로
-  남겨 색인 단계에서 `INVALID_ACL`로 차단한다. PoC/데모에서 스페이스 단위 접근을 허용하려면
-  `space_fallback`으로 바꿔 `allowed_groups=["space:{space_key}"]`를 합성할 수 있다.
+  `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated`이다. 이 정책은
+  `allowed_groups=[RAG_ATLASSIAN_PUBLIC_ACL_GROUP]`(기본 `"*"`)를 부여하고, RAG 검색은 동일
+  sentinel을 모든 principal의 group 조건에 주입한다. 보수 운영이 필요하면 `mark_missing`으로
+  바꿔 빈 ACL을 색인 단계에서 `INVALID_ACL`로 차단할 수 있다. PoC/데모에서 스페이스 단위
+  접근을 허용하려면 `space_fallback`으로 바꿔 `allowed_groups=["space:{space_key}"]`를 합성할 수 있다.
 - **미결:** 상위 folder/page restriction 또는 space permission을 실제로 추가 조회해 ACL을
   계산하는 운영 강화 로직은 별도 endpoint 명세와 BE/infra 협의 후 구현한다.
 

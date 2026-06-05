@@ -16,6 +16,7 @@ from app.adapters.atlassian import (
     parse_empty_restriction_policy,
     parse_group_identifier_fields,
     parse_read_restrictions_acl,
+    synthesize_authenticated_acl,
 )
 from app.adapters.json_fixture import parse_atlassian_datetime
 
@@ -235,6 +236,7 @@ def test_parse_group_identifier_fields_rejects_empty_values() -> None:
 def test_parse_empty_restriction_policy_accepts_known_values() -> None:
     assert parse_empty_restriction_policy(" mark_missing ") == "mark_missing"
     assert parse_empty_restriction_policy("space_fallback") == "space_fallback"
+    assert parse_empty_restriction_policy(" allow_authenticated ") == "allow_authenticated"
 
 
 def test_parse_empty_restriction_policy_rejects_unknown_values() -> None:
@@ -242,6 +244,7 @@ def test_parse_empty_restriction_policy_rejects_unknown_values() -> None:
         parse_empty_restriction_policy("public")
     except ValueError as exc:
         assert "atlassian_empty_restriction_policy" in str(exc)
+        assert "allow_authenticated" in str(exc)
         assert "mark_missing" in str(exc)
         assert "space_fallback" in str(exc)
     else:
@@ -273,6 +276,31 @@ def test_confluence_restriction_acl_provider_can_fallback_to_space_acl() -> None
 
     assert groups == ["space:ENG"]
     assert users == []
+
+
+def test_confluence_restriction_acl_provider_can_mark_empty_as_authenticated() -> None:
+    client = _FakeRestrictionClient(
+        {"operation": "read", "restrictions": {"group": {"results": []}, "user": {"results": []}}}
+    )
+    provider = ConfluenceRestrictionAclProvider(
+        client=client,
+        empty_restriction_policy="allow_authenticated",
+        public_acl_group="*",
+    )
+
+    groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
+
+    assert groups == ["*"]
+    assert users == []
+
+
+def test_synthesize_authenticated_acl_rejects_empty_token() -> None:
+    try:
+        synthesize_authenticated_acl(" ")
+    except ValueError as exc:
+        assert "atlassian_public_acl_group" in str(exc)
+    else:
+        raise AssertionError("empty public ACL group must be rejected")
 
 
 def test_confluence_restriction_acl_provider_rejects_unknown_empty_policy() -> None:

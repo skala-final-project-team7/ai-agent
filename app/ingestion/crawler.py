@@ -53,7 +53,9 @@ from app.storage.raw_store import RawPageStore
 class CrawlRequest:
     """Full Crawl 트리거 입력 (관리자 대시보드 / 스케줄러)."""
 
-    space_key: str
+    # api-spec v2.4.0: /ml/ingest 는 스페이스 스코프 없이 전체 수집한다. 내부 스케줄러가
+    # 단일 스페이스 재색인을 수행할 때만 값을 넣는다.
+    space_key: str = ""
     # PoC: BFF→Ingestion 전달(미확정 TBD). 로그·메시지 페이로드에 남기지 않는다.
     access_token: str | None = None
     cloud_id: str | None = None
@@ -86,7 +88,7 @@ def run_full_crawl(
     5) Chunking Queue(``content.chunking``) 발행 → 6) ``CrawlResult`` 집계.
 
     Args:
-        request: Full Crawl 트리거 입력(space_key + 주입 자격증명).
+        request: Full Crawl 트리거 입력(선택적 space_key + 주입 자격증명).
         raw_store: ``raw_pages`` 적재 어댑터(테스트는 ``FakeRawPageStore``).
         publisher: Chunking Queue 발행 publisher(테스트는 ``FakeQueuePublisher``).
             운영에서는 RabbitMQ 연결을 소유한 Worker 가 주입한다.

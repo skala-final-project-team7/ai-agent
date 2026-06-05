@@ -4,7 +4,7 @@
 `POST /api/conversations/{conversationId}/chat` 으로 그대로 중계하며 `done` 에 `messageId` 를
 주입한다(api-spec v2.2.0 §1-1/§2-1). 근거 코드: `app/api/routes.py`, `app/schemas/response.py`,
 `app/schemas/enums.py`, `app/query/formatter.py`, `app/api/errors.py`. 정본 계약은
-`docs/api-spec.md` 및 LINA `api-spec.md` v2.2.0.
+`docs/api-spec.md` 및 LINA `api-spec.md` v2.4.0.
 
 ---
 
@@ -21,14 +21,13 @@
 |---|---|---|---|---|
 | `question` | string | Y | — | 사용자 자연어 질문 (최소 1자) |
 | `userId` | string | Y | — | ACL Pre-filtering 사용자 식별자 |
-| `groups` | string[] | Y | 없음 | 사용자 그룹 — ACL `should`-OR 필터. 빈 배열 금지 |
-| `spaceKey` | string | Y | 없음 | 검색 대상 Confluence 스페이스. 빈 문자열 금지 |
+| `groups` | string[] | Y | 없음 | 사용자 그룹 — ACL `should`-OR 필터. BFF가 빈 배열을 fail-closed로 차단 |
 | `conversationId` | string | N | null | 멀티턴 대화 컨텍스트 ID |
 | `history` | array | N | `[]` | 이전 대화 이력 `[{ "role": "user"\|"assistant", "content": "..." }]` (BFF가 DB에서 조회) |
 | `stream` | boolean | N | `false` | true면 토큰 단위 스트리밍. PoC 환경(OpenAI 키 없음)에서는 true여도 자동으로 비스트리밍 fallback |
 
-> `accessToken`/`cloudId` 는 `/ml/query` 에 전달하지 않는다(v2.2.0 — 질의 경로는 라이브
-> Confluence 호출이 없어 토큰 불필요, 토큰은 수집 `/ml/ingest` 단계에서만 사용).
+> `spaceKey`/`accessToken`/`cloudId` 는 `/ml/query` 에 전달하지 않는다(v2.4.0). 질의 경로는
+> 라이브 Confluence 호출 없이 `userId`/`groups`와 색인된 ACL payload로만 검색한다.
 
 ---
 

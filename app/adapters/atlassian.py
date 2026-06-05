@@ -14,6 +14,8 @@
     호출(run_full_crawl_workflow 블랙박스) + ProcessedDocument→PageObject 매핑 +
     space_key 기반 PoC ACL 합성. 2026-06-02 Admin Key 실측으로 page-level read
     restriction API 적용 가능성을 확인했으며, 운영 ACL 수집은 후속 작업으로 분리.
+  - 2026-06-05, api-spec v2.4.0 정합 — empty restriction `allow_authenticated` 정책과
+    public ACL sentinel 설정을 지원한다.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x (vendored 에이전트가 enum.StrEnum 사용)
@@ -47,7 +49,7 @@ from app.schemas.page_object import PageObject
 if TYPE_CHECKING:
     from app.config import Settings
 
-EMPTY_RESTRICTION_POLICIES = frozenset({"mark_missing", "space_fallback"})
+EMPTY_RESTRICTION_POLICIES = frozenset({"mark_missing", "space_fallback", "allow_authenticated"})
 
 
 class _WorkflowRunner(Protocol):
@@ -71,13 +73,14 @@ class ConfluenceRestrictionAclProvider:
 
     Empty restriction은 곧 "공개"를 의미한다고 단정할 수 없다. Admin Key 실측에서
     page-level restriction이 비어도 상위 folder/page/space 권한 때문에 일반 조회가 막히는
-    사례가 확인됐다. 따라서 기본 정책은 빈 ACL을 반환해 후속 ACL gate가 색인을 차단하게 한다.
+    사례가 확인됐다. 따라서 빈 restriction 처리는 정책으로 명시 분기한다.
     """
 
     client: Any
-    empty_restriction_policy: str = "mark_missing"  # mark_missing | space_fallback
+    empty_restriction_policy: str = "mark_missing"
     group_identifier_fields: tuple[str, ...] = ("id", "groupId", "name")
     group_acl_prefix: str = ""
+    public_acl_group: str = "*"
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -85,6 +88,8 @@ class ConfluenceRestrictionAclProvider:
             "empty_restriction_policy",
             parse_empty_restriction_policy(self.empty_restriction_policy),
         )
+        if self.empty_restriction_policy == "allow_authenticated":
+            synthesize_authenticated_acl(self.public_acl_group)
 
     def get_page_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
         raw = self.client.get_page_read_restrictions(page_id)
@@ -95,6 +100,8 @@ class ConfluenceRestrictionAclProvider:
         )
         if allowed_groups or allowed_users:
             return allowed_groups, allowed_users
+        if self.empty_restriction_policy == "allow_authenticated":
+            return synthesize_authenticated_acl(self.public_acl_group)
         if self.empty_restriction_policy == "space_fallback":
             return synthesize_space_acl(space_key)
         return [], []
@@ -166,6 +173,7 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
                 empty_restriction_policy=parse_empty_restriction_policy(
                     settings.atlassian_empty_restriction_policy
                 ),
+                public_acl_group=settings.atlassian_public_acl_group,
             )
         return cls(
             cloud_id=settings.atlassian_cloud_id,
@@ -374,6 +382,14 @@ def synthesize_space_acl(space_key: str) -> tuple[list[str], list[str]]:
     (RAG 검색 ACL 필터와 공유 계약).
     """
     return [f"space:{space_key}"], []
+
+
+def synthesize_authenticated_acl(public_acl_group: str) -> tuple[list[str], list[str]]:
+    """모든 인증 사용자에게 열린 페이지를 표현하는 sentinel ACL 을 합성한다."""
+    token = public_acl_group.strip()
+    if not token:
+        raise ValueError("atlassian_public_acl_group must be a non-empty token")
+    return [token], []
 
 
 def _default_workflow_runner() -> _WorkflowRunner:

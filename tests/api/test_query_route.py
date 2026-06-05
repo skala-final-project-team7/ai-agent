@@ -6,9 +6,9 @@
 컨테이너·모델 없이 동작 — :memory: Qdrant + Fake everything + samples 자동 인덱싱 기본값을
 활용한다.
 
-feature13 마이그레이션 정합 (api-spec v2.2.0):
+feature13 마이그레이션 정합 (api-spec v2.4.0):
   - 엔드포인트 ``/ml/query`` (구 ``/api/v1/rag/query`` 대체).
-  - 요청 본문 ``question``/``userId``/``groups``/``spaceKey``/``conversationId``/``history``
+  - 요청 본문 ``question``/``userId``/``groups``/``conversationId``/``history``/``stream``
     (구 ``query``/``jwt`` 대체 — JWT 미수신, userId/groups 직접 전달).
   - SSE: ``token``=``{"content": ...}``, ``sources``=``{"sources": [...]}``(sourceUpdatedAt),
     ``verification``=집계 ``{"confidenceScore", "verificationResult"}``(검색 0건이면 생략),
@@ -59,7 +59,6 @@ def _body(
         "question": question,
         "userId": user_id,
         "groups": groups if groups is not None else ["space:CLOUD"],
-        "spaceKey": "CLOUD",
     }
     payload.update(extra)
     return payload
@@ -276,32 +275,10 @@ async def test_query_route_missing_required_fields_returns_422(
 async def test_query_route_empty_groups_returns_422(
     populated_graph: Any,
 ) -> None:
-    """api-spec v2.3.0 §2-1 — groups 빈 배열은 fail-closed 검증으로 차단."""
+    """api-spec v2.4.0 — RAG 단은 groups 빈 배열을 허용한다(BFF fail-closed 책임)."""
     async with _client(populated_graph) as client:
         resp = await client.post("/ml/query", json=_body(groups=[]))
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_query_route_missing_space_key_returns_422(
-    populated_graph: Any,
-) -> None:
-    """api-spec v2.3.0 §2-1 — spaceKey 누락은 검색 scope 부재라 차단."""
-    payload = _body()
-    payload.pop("spaceKey")
-    async with _client(populated_graph) as client:
-        resp = await client.post("/ml/query", json=payload)
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_query_route_blank_space_key_returns_422(
-    populated_graph: Any,
-) -> None:
-    """api-spec v2.3.0 §2-1 — 빈 spaceKey는 검색 scope 부재라 차단."""
-    async with _client(populated_graph) as client:
-        resp = await client.post("/ml/query", json=_body(spaceKey="  "))
-    assert resp.status_code == 422
+    assert resp.status_code == 200
 
 
 # --- ACL 매칭 0건 → RETRIEVAL_EMPTY ---

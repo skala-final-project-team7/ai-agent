@@ -1,6 +1,6 @@
 """수집 HTTP API 라우트 회귀 — POST /ml/ingest + status + health.
 
-본 테스트는 api-spec v2.2.0 §2-2/§2-3/§2-4-2 계약을 검증한다.
+본 테스트는 api-spec v2.4.0 §2-2/§2-3/§2-4-2 계약을 검증한다.
 - POST /ml/ingest → jobId 발급 + status=STARTED + startedAt(KST), 백그라운드 크롤 후 COMPLETED.
 - GET /ml/ingest/status/{jobId} → jobId/status/totalPages/processedPages/failedPages/startedAt.
 - GET /ml/ingest/health → {"status": "UP"}.
@@ -71,7 +71,7 @@ async def test_ingest_trigger_then_status_completed() -> None:
     """POST /ml/ingest → STARTED + jobId, 백그라운드 완료 후 status=COMPLETED + 카운트 집계."""
     deps = _stub_deps()
     async with _client(deps) as client:
-        resp = await client.post("/ml/ingest", json={"spaceKey": "CPC"})
+        resp = await client.post("/ml/ingest", json={"mode": "full"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "STARTED"
@@ -99,7 +99,6 @@ async def test_ingest_delta_mode_uses_delta_runner_and_counts_changed_deleted_fa
         resp = await client.post(
             "/ml/ingest",
             json={
-                "spaceKey": "CPC",
                 "mode": "delta",
                 "accessToken": "token-synthetic",
                 "cloudId": "cloud-synthetic",
@@ -137,5 +136,13 @@ async def test_ingest_status_unknown_job_returns_404_envelope() -> None:
 async def test_ingest_rejects_invalid_mode() -> None:
     """mode 는 full | delta 만 허용 — 그 외 값은 422(Pydantic 검증)."""
     async with _client(_stub_deps()) as client:
-        resp = await client.post("/ml/ingest", json={"spaceKey": "CPC", "mode": "bogus"})
+        resp = await client.post("/ml/ingest", json={"mode": "bogus"})
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ingest_accepts_empty_body_no_space_key() -> None:
+    """api-spec v2.4.0 §2-2 — spaceKey 제거. 빈 본문도 mode 기본 full 로 허용한다."""
+    async with _client(_stub_deps()) as client:
+        resp = await client.post("/ml/ingest", json={})
+    assert resp.status_code == 200

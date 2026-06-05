@@ -64,9 +64,13 @@ class Settings(BaseSettings):
     # 필요 시 group 값 앞에 붙일 prefix. 기본값은 무변환이며, 예: "confluence-group:".
     atlassian_group_acl_prefix: str = ""
     # Page-level read restriction 이 비어 있을 때의 처리 정책.
-    # mark_missing: 빈 ACL 로 두어 색인 단계에서 INVALID_ACL 처리(운영 기본 보수 정책).
+    # allow_authenticated(기본): public_acl_group sentinel 부여 → 모든 인증 사용자 허용.
     # space_fallback: PoC/데모용으로 space:{space_key} ACL 합성.
-    atlassian_empty_restriction_policy: str = "mark_missing"
+    # mark_missing: 빈 ACL 로 두어 색인 단계에서 INVALID_ACL 처리.
+    atlassian_empty_restriction_policy: str = "allow_authenticated"
+    # allow_authenticated 정책에서 부여할 "모든 인증 사용자" sentinel group 토큰.
+    # RAG build_acl_filter의 PUBLIC_ACL_GROUP과 반드시 동일해야 한다.
+    atlassian_public_acl_group: str = "*"
     # Delta Sync 가 비교할 이전 snapshot 경로. 실제 운영에서는 공유 저장소/Mongo 기반 snapshot
     # repository 로 교체될 수 있으나, 현재 vendored Data Sync Agent 계약은 파일 경로를 요구한다.
     data_sync_previous_snapshot: str = "data/snapshots/latest_snapshot.json"
