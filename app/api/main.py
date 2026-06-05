@@ -51,6 +51,7 @@ from app.api.ingest_deps import build_ingest_deps
 from app.api.ingest_routes import router as ingest_router
 from app.api.query_deps import build_poc_deps, build_real_deps
 from app.api.query_routes import router as query_router
+from app.api.webhook_routes import webhook_router
 from app.config import get_settings
 from app.pipeline.query_graph import (
     QueryGraphDeps,
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(query_router)
     app.include_router(ingest_router)
+    app.include_router(webhook_router)
 
     # 운영 모니터링 — Prometheus instrumentator (feature12, PDF 0518_RAG.pdf #4).
     # ``/metrics`` 는 OpenAPI 스키마에서 제외(include_in_schema=False)하며 BFF 인증을
