@@ -143,6 +143,8 @@ python -m examples.demo_data_layer
 - **RabbitMQ** — attachment/chunking worker queue
 - **Confluence/Atlassian API** — 실 수집 source
 - **OpenAI API** — 운영 LLM provider
+- **BFF callback** — 수집 job 종료 후 Admin Key revoke 요청
+  (`RAG_BFF_ADMIN_KEY_REVOKE_URL`, 미설정 시 no-op)
 
 스키마 상세는 [`docs/db-schema.md`](docs/db-schema.md).
 

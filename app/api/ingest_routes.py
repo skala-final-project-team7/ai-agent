@@ -32,6 +32,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.api.admin_key_revoke import AdminKeyRevokeRequest, notify_admin_key_revoke_safely
 from app.api.ingest_deps import IngestDeps
 from app.ingestion.crawler import CrawlRequest
 from app.ingestion.sync import DeltaSyncRequest
@@ -109,21 +110,40 @@ def _run_full_ingest_job(deps: IngestDeps, job_id: str, crawl_request: CrawlRequ
         result = deps.run_crawl(crawl_request)
     except Exception as exc:  # noqa: BLE001 — 크롤/외부 호출 예외 광범위 캐치(잡 단위 격리)
         _LOGGER.exception("ingest job failed: job_id=%s", job_id)
+        finished_at = datetime.now(UTC)
         deps.job_store.update(
             job_id,
             status=IngestJobStatus.FAILED,
-            finished_at=datetime.now(UTC),
+            finished_at=finished_at,
             error=str(exc),
+        )
+        _notify_admin_key_revoke(
+            deps,
+            job_id=job_id,
+            mode="full",
+            status=IngestJobStatus.FAILED,
+            cloud_id=crawl_request.cloud_id,
+            error=str(exc),
+            finished_at=finished_at,
         )
         return
     failed = len(result.failed_page_ids)
+    finished_at = datetime.now(UTC)
     deps.job_store.update(
         job_id,
         status=IngestJobStatus.COMPLETED,
         total_pages=result.pages_collected + failed,
         processed_pages=result.pages_collected,
         failed_pages=failed,
-        finished_at=datetime.now(UTC),
+        finished_at=finished_at,
+    )
+    _notify_admin_key_revoke(
+        deps,
+        job_id=job_id,
+        mode="full",
+        status=IngestJobStatus.COMPLETED,
+        cloud_id=crawl_request.cloud_id,
+        finished_at=finished_at,
     )
 
 
@@ -144,21 +164,70 @@ def _run_delta_ingest_job(deps: IngestDeps, job_id: str, delta_request: DeltaSyn
         result = deps.run_delta(delta_request)
     except Exception as exc:  # noqa: BLE001 — sync/외부 호출 예외는 잡 단위로 격리.
         _LOGGER.exception("delta ingest job failed: job_id=%s", job_id)
+        finished_at = datetime.now(UTC)
         deps.job_store.update(
             job_id,
             status=IngestJobStatus.FAILED,
-            finished_at=datetime.now(UTC),
+            finished_at=finished_at,
             error=str(exc),
+        )
+        _notify_admin_key_revoke(
+            deps,
+            job_id=job_id,
+            mode="delta",
+            status=IngestJobStatus.FAILED,
+            cloud_id=delta_request.cloud_id,
+            error=str(exc),
+            finished_at=finished_at,
         )
         return
     deleted_candidates = len(result.deleted_candidate_page_ids)
+    finished_at = datetime.now(UTC)
     deps.job_store.update(
         job_id,
         status=IngestJobStatus.COMPLETED,
         total_pages=result.changed_pages + deleted_candidates + result.failed_items,
         processed_pages=result.changed_pages + deleted_candidates,
         failed_pages=result.failed_items,
-        finished_at=datetime.now(UTC),
+        finished_at=finished_at,
+    )
+    _notify_admin_key_revoke(
+        deps,
+        job_id=job_id,
+        mode="delta",
+        status=IngestJobStatus.COMPLETED,
+        cloud_id=delta_request.cloud_id,
+        finished_at=finished_at,
+    )
+
+
+def _notify_admin_key_revoke(
+    deps: IngestDeps,
+    *,
+    job_id: str,
+    mode: str,
+    status: IngestJobStatus,
+    cloud_id: str | None,
+    finished_at: datetime,
+    error: str | None = None,
+) -> None:
+    """수집 terminal 상태 도달 후 BFF에 Admin Key revoke를 요청한다.
+
+    ML은 Atlassian Admin Key를 직접 말소하지 않는다. BFF callback이 설정된 경우에만
+    요청하며, 실패해도 ingestion job 상태를 되돌리거나 덮어쓰지 않는다.
+    """
+    if deps.admin_key_revoke_notifier is None:
+        return
+    notify_admin_key_revoke_safely(
+        deps.admin_key_revoke_notifier,
+        AdminKeyRevokeRequest(
+            job_id=job_id,
+            mode=mode,
+            status=status,
+            cloud_id=cloud_id,
+            error=error,
+            finished_at=finished_at,
+        ),
     )
 
 

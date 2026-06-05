@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     # repository 로 교체될 수 있으나, 현재 vendored Data Sync Agent 계약은 파일 경로를 요구한다.
     data_sync_previous_snapshot: str = "data/snapshots/latest_snapshot.json"
 
+    # --- BFF Admin Key revoke callback ---
+    # ML은 Atlassian Admin Key를 직접 말소하지 않는다. 수집 job이 COMPLETED/FAILED terminal
+    # 상태가 되면 이 URL로 BFF에 revoke 요청을 보낸다. 비어 있으면 PoC/local no-op.
+    bff_admin_key_revoke_url: str = ""
+    bff_admin_key_revoke_token: SecretStr = SecretStr("")
+    bff_admin_key_revoke_timeout_seconds: float = 5.0
+
     # --- RabbitMQ ---
     # Worker CLI 가 사용할 브로커 URL. 큐/DLQ 생성 정책은 인프라 레이어에서 관리하고,
     # 애플리케이션은 queue_declare + ack/nack 동작만 책임진다.
