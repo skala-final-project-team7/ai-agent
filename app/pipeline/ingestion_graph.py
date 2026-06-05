@@ -4,16 +4,19 @@
 작성자 : 최태성
 작성목적 : feature6 Phase 4 — 표준 PageObject 를 받아 본문 + 첨부 청크를 적재까지 가는
           단일 페이지 Ingestion LangGraph. 설계서 §3.1 Big Picture 정합으로 analyze →
-          chunk → embed_upsert 3 stage 를 한 위치에서 wiring 한다. Agent 노드(문서
-          분석기)는 stub 으로 두고, 각 단계 종료 시 `IngestionJobsRepository.record`
-          로 db-schema §2.3 ingestion_jobs 에 기록한다 (`docs/rag-pipeline-design.md`
-          §3, `docs/db-schema.md` §2.3, `app/CLAUDE.md` §2).
+          chunk → embed_upsert 3 stage 를 한 위치에서 wiring 한다. 문서 분석기는
+          `DocumentAnalyzer` adapter wrapper로 호출하고, 각 단계 종료 시
+          `IngestionJobsRepository.record` 로 db-schema §2.3 ingestion_jobs 에 기록한다
+          (`docs/rag-pipeline-design.md` §3, `docs/db-schema.md` §2.3, `app/CLAUDE.md` §2).
 작성일 : 2026-05-18
 변경사항 내역 (날짜, 변경목적, 변경내용 순)
   - 2026-05-18, 최초 작성, feature6 Phase 4 — IngestionGraphDeps + build_ingestion_graph
     + run_ingestion + 3 노드 (analyze_document / chunk_documents / embed_upsert).
     chunk_attachment 는 deps 에 callable 로 주입 가능 (파일 시스템 의존성 회피).
     PDF/CSV (feature4-B 대기) 의 ValueError 는 catch 후 잡 기록 + 본문은 정상 진행.
+  - 2026-06-05, 최신 RAG 동기화, document_analyzer_stub 기본값을 DocumentAnalyzer
+    adapter wrapper(manage_document_analyzer)로 교체. PoC는 Fake classifier/cache,
+    운영은 build_real_ingestion_deps가 OpenAI classifier + MySQL cache를 주입.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x, LangGraph 0.2.x
@@ -163,7 +166,7 @@ def run_ingestion(state: IngestionState, *, graph: Any) -> IngestionState:
 
 
 def _analyze_document_node(state: IngestionState, *, deps: IngestionGraphDeps) -> IngestionState:
-    """ANALYZE stage — Agent stub 호출 후 페이지 단위 잡 기록."""
+    """ANALYZE stage — 문서 분석 노드 호출 후 페이지 단위 잡 기록."""
     started = datetime.now(UTC)
     state = deps.document_analyzer_node(state)
     state.stage = IngestionStage.ANALYZE
