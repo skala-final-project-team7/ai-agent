@@ -35,11 +35,15 @@ from langgraph.graph import END, StateGraph
 
 from app.ingestion.attachment_analyzer import analyze_attachment
 from app.ingestion.chunker import chunk_attachment, chunk_page
+from app.ingestion.document_analyzer import (
+    DocTypeClassification,
+    DocumentAnalyzer,
+    FakeDocTypeClassifier,
+)
 from app.ingestion.embedder.base import DenseEmbedder, SparseEmbedder
 from app.ingestion.indexer import index_chunks
-from app.pipeline.stubs import document_analyzer_stub
 from app.schemas.chunk import Chunk
-from app.schemas.enums import IngestionStage, IngestionStatus
+from app.schemas.enums import DocType, IngestionStage, IngestionStatus
 from app.schemas.page_object import Attachment, PageObject
 from app.schemas.rag_state import IngestionState
 from app.storage.chunk_lookup import ChunkTextLookup, FakeChunkTextLookup
@@ -50,6 +54,7 @@ from app.storage.jobs import (
 )
 from app.storage.mongo_cache import EmbeddingCache
 from app.storage.qdrant_client import QdrantPoolStore
+from app.storage.space_doc_type_cache import FakeSpaceDocTypeCache
 
 # 노드 시그니처 — (IngestionState) -> IngestionState.
 IngestionNode = Callable[[IngestionState], IngestionState]
@@ -57,14 +62,36 @@ IngestionNode = Callable[[IngestionState], IngestionState]
 # chunk_attachment 시그니처 — 파일 시스템 의존성을 갖는 함수라 deps 주입으로 테스트 가능.
 ChunkAttachmentFn = Callable[..., list[Chunk]]
 
+_DEFAULT_FAKE_CLASSIFICATION = DocTypeClassification(
+    dominant=DocType.OPERATION,
+    confidence=1.0,
+)
+
+
+def manage_document_analyzer(
+    state: IngestionState, *, analyzer: DocumentAnalyzer | None = None
+) -> IngestionState:
+    """DocumentAnalyzer를 호출해 IngestionState.doc_type을 채운다.
+
+    PoC/테스트 경로는 Fake classifier + Fake cache를 기본으로 사용해 외부 LLM·DB 없이
+    결정론적으로 ``operation``을 반환한다. 운영 경로는 ``build_real_ingestion_deps``가
+    OpenAI classifier와 MySQL cache를 주입한다.
+    """
+    resolver = analyzer or DocumentAnalyzer(
+        classifier=FakeDocTypeClassifier(result=_DEFAULT_FAKE_CLASSIFICATION),
+        cache=FakeSpaceDocTypeCache(),
+    )
+    state.doc_type = resolver.resolve_doc_type(state.page).value
+    return state
+
 
 @dataclass(slots=True)
 class IngestionGraphDeps:
     """Ingestion 그래프 의존성 묶음 — 그래프 빌더가 노드에 wiring 한다.
 
     Pipeline / Storage 의존성(Phase 1·2·3 모듈)은 모두 호출자가 주입한다. Agent 노드
-    (문서 분석기)는 stub 기본값. Agent 코드 전달 시 ``document_analyzer_node`` 만
-    교체하면 그래프는 변경 없이 동작한다.
+    (문서 분석기)는 ``DocumentAnalyzer`` adapter 기본값. 운영 경로는
+    ``document_analyzer_node`` 에 실 classifier/cache를 주입한 partial을 전달한다.
     """
 
     # --- Pipeline / Storage 의존성 ---
@@ -75,8 +102,8 @@ class IngestionGraphDeps:
     chunk_lookup: ChunkTextLookup = field(default_factory=FakeChunkTextLookup)
     jobs: IngestionJobsRepository = field(default_factory=FakeIngestionJobsRepository)
 
-    # --- Agent 노드 — 기본값은 stub. 실 Agent 코드 전달 시 교체. ---
-    document_analyzer_node: IngestionNode = field(default=document_analyzer_stub)
+    # --- Agent 노드 — 기본값은 Fake classifier/cache 기반 DocumentAnalyzer. ---
+    document_analyzer_node: IngestionNode = field(default=manage_document_analyzer)
 
     # --- chunk_attachment 주입 — 테스트에서 파일 시스템 의존성 회피용. ---
     chunk_attachment_fn: ChunkAttachmentFn = field(default=chunk_attachment)
@@ -296,5 +323,6 @@ __all__ = [
     "IngestionGraphDeps",
     "IngestionNode",
     "build_ingestion_graph",
+    "manage_document_analyzer",
     "run_ingestion",
 ]

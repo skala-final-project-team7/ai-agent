@@ -76,6 +76,7 @@
 --------------------------------------------------
 """
 
+from functools import partial
 from pathlib import Path
 
 from app.adapters.json_fixture import JsonFixtureSourceAdapter
@@ -83,7 +84,7 @@ from app.config import Settings, get_settings
 from app.ingestion.chunker import chunk_attachment, chunk_page
 from app.ingestion.embedder.base import FakeDenseEmbedder, FakeSparseEmbedder
 from app.ingestion.indexer import index_chunks
-from app.pipeline.ingestion_graph import IngestionGraphDeps
+from app.pipeline.ingestion_graph import IngestionGraphDeps, manage_document_analyzer
 from app.pipeline.query_graph import QueryGraphDeps
 from app.query.reranker.base import FakeCrossEncoderReranker
 from app.schemas.chunk import Chunk
@@ -331,7 +332,8 @@ def build_poc_ingestion_deps(settings: Settings | None = None) -> IngestionGraph
         settings: 환경 설정. None 이면 ``get_settings()`` 로 lazy 로드.
 
     Returns:
-        모든 Fake 어댑터가 wiring 된 ``IngestionGraphDeps``. Agent 노드는 stub 기본값.
+        모든 Fake 어댑터가 wiring 된 ``IngestionGraphDeps``. 문서 분석 노드는
+        Fake classifier/cache 기반 ``manage_document_analyzer`` 기본값.
     """
     # Fake 어댑터들은 함수 본문 내 import — 본 모듈 최상단을 가볍게 유지.
     from app.storage.chunk_lookup import FakeChunkTextLookup
@@ -357,7 +359,7 @@ def build_poc_ingestion_deps(settings: Settings | None = None) -> IngestionGraph
 def build_real_ingestion_deps(settings: Settings | None = None) -> IngestionGraphDeps:
     """운영 IngestionGraphDeps — E5 + BM25 + Qdrant.from_settings + Mongo 3종.
 
-    feature6 Phase 4 종결에 따른 운영 진입점. Ingestion 그래프 6 어댑터 모두 운영
+    feature6 Phase 4 종결에 따른 운영 진입점. Ingestion 그래프 어댑터 모두 운영
     어댑터로 wiring:
         - E5DenseEmbedder (sentence-transformers, lazy import)
         - BM25SparseEmbedder (fastembed, lazy import)
@@ -365,6 +367,7 @@ def build_real_ingestion_deps(settings: Settings | None = None) -> IngestionGrap
         - MongoEmbeddingCache.from_settings (db-schema §2.4)
         - MongoChunkTextLookup.from_settings (db-schema §2.5)
         - MongoIngestionJobsRepository.from_settings (db-schema §2.3)
+        - DocumentAnalyzer(OpenAIDocTypeClassifier + MySQLSpaceDocTypeCache)
 
     Ingestion 은 query 와 별도 진입점(RabbitMQ Worker / 운영 트리거 시스템) 책임
     이므로 FastAPI lifespan 에 자동 wire 하지 않는다. 운영 Worker 가 본 함수를 1회
@@ -375,8 +378,8 @@ def build_real_ingestion_deps(settings: Settings | None = None) -> IngestionGrap
         settings: 환경 설정. None 이면 ``get_settings()`` 로 lazy 로드.
 
     Returns:
-        운영 어댑터 6종이 wiring 된 ``IngestionGraphDeps``. Agent 노드(문서 분석기)
-        는 stub 기본값 — Agent 코드 전달 시 ``deps.document_analyzer_node`` 만 교체.
+        운영 어댑터가 wiring 된 ``IngestionGraphDeps``. 문서 분석기는 OpenAI 기반
+        classifier와 MySQL ``space_doc_type_cache``를 사용한다.
 
     Raises:
         ImportError: sentence-transformers / fastembed 미설치 시 (embedding extra
@@ -386,17 +389,26 @@ def build_real_ingestion_deps(settings: Settings | None = None) -> IngestionGrap
 
     # 실 어댑터 import 는 모두 lazy — embedding extra 미설치 환경에서도 PoC 경로와
     # 본 모듈 import 는 동작해야 한다 (build_real_deps 정책 정합).
+    from app.ingestion.document_analyzer import DocumentAnalyzer, OpenAIDocTypeClassifier
     from app.ingestion.embedder.dense import E5DenseEmbedder
     from app.ingestion.embedder.sparse import BM25SparseEmbedder
     from app.storage.chunk_lookup import MongoChunkTextLookup
     from app.storage.jobs import MongoIngestionJobsRepository
     from app.storage.mongo_cache import MongoEmbeddingCache
+    from app.storage.space_doc_type_cache import MySQLSpaceDocTypeCache
 
     dense = E5DenseEmbedder(settings.dense_embedding_model)
     sparse = BM25SparseEmbedder()
     # dense_dimension 은 어댑터가 모델 로드 후 보고한 값 (E5-large = 1024).
     store = QdrantPoolStore.from_settings(settings, dense_dimension=dense.dimension)
     store.bootstrap_collections()
+    document_analyzer = DocumentAnalyzer(
+        classifier=OpenAIDocTypeClassifier(
+            api_key=settings.openai_api_key.get_secret_value(),
+            model=settings.llm_aux_model,
+        ),
+        cache=MySQLSpaceDocTypeCache.from_settings(settings),
+    )
 
     return IngestionGraphDeps(
         dense_embedder=dense,
@@ -405,4 +417,8 @@ def build_real_ingestion_deps(settings: Settings | None = None) -> IngestionGrap
         cache=MongoEmbeddingCache.from_settings(settings),
         chunk_lookup=MongoChunkTextLookup.from_settings(settings),
         jobs=MongoIngestionJobsRepository.from_settings(settings),
+        document_analyzer_node=partial(
+            manage_document_analyzer,
+            analyzer=document_analyzer,
+        ),
     )
