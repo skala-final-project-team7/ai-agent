@@ -87,3 +87,22 @@ def test_atlassian_acl_mapping_settings_env_override(monkeypatch: pytest.MonkeyP
     assert settings.atlassian_group_acl_prefix == "confluence-group:"
     assert settings.atlassian_empty_restriction_policy == "space_fallback"
     assert settings.atlassian_public_acl_group == "public"
+
+
+def test_bff_admin_key_revoke_settings_defaults() -> None:
+    settings = _settings_without_env_file()
+    assert settings.bff_admin_key_revoke_url == ""
+    assert settings.bff_admin_key_revoke_token.get_secret_value() == ""
+    assert settings.bff_admin_key_revoke_timeout_seconds == 5.0
+
+
+def test_bff_admin_key_revoke_settings_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_BFF_ADMIN_KEY_REVOKE_URL", "https://bff.example/internal/revoke")
+    monkeypatch.setenv("RAG_BFF_ADMIN_KEY_REVOKE_TOKEN", "callback-secret")
+    monkeypatch.setenv("RAG_BFF_ADMIN_KEY_REVOKE_TIMEOUT_SECONDS", "8")
+    settings = Settings(_env_file=None)  # type: ignore[arg-type]
+    assert settings.bff_admin_key_revoke_url == "https://bff.example/internal/revoke"
+    assert settings.bff_admin_key_revoke_token.get_secret_value() == "callback-secret"
+    assert settings.bff_admin_key_revoke_timeout_seconds == 8

@@ -21,13 +21,31 @@ from app.api.ingest_routes import get_deps
 from app.api.main import create_app
 from app.ingestion.crawler import CrawlRequest, CrawlResult
 from app.ingestion.sync import DeltaSyncRequest, DeltaSyncResult
+from app.schemas.enums import IngestJobStatus
 from app.storage.ingest_jobs import InMemoryIngestJobStore
 
 
-def _stub_deps() -> IngestDeps:
+class _RecordingAdminKeyRevokeNotifier:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.requests = []
+
+    def notify(self, request) -> None:  # type: ignore[no-untyped-def]
+        self.requests.append(request)
+        if self.fail:
+            raise RuntimeError("bff unavailable")
+
+
+def _stub_deps(
+    *,
+    notifier: _RecordingAdminKeyRevokeNotifier | None = None,
+    fail_crawl: bool = False,
+) -> IngestDeps:
     """stub 크롤 러너(3 성공 + 1 실패)를 가진 IngestDeps — 카운트 집계 결정론."""
 
     def _run_crawl(request: CrawlRequest) -> CrawlResult:
+        if fail_crawl:
+            raise RuntimeError("crawl failed")
         return CrawlResult(
             space_key=request.space_key,
             pages_collected=3,
@@ -46,6 +64,7 @@ def _stub_deps() -> IngestDeps:
         run_crawl=_run_crawl,
         run_delta=_run_delta,
         previous_snapshot_path="/tmp/previous_snapshot.json",
+        admin_key_revoke_notifier=notifier,
     )
 
 
@@ -92,6 +111,69 @@ async def test_ingest_trigger_then_status_completed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingest_full_completion_notifies_bff_admin_key_revoke() -> None:
+    """Full 수집 완료 후 ML은 BFF에 Admin Key revoke 요청을 보낸다."""
+    notifier = _RecordingAdminKeyRevokeNotifier()
+    deps = _stub_deps(notifier=notifier)
+
+    async with _client(deps) as client:
+        resp = await client.post(
+            "/ml/ingest",
+            json={"mode": "full", "accessToken": "token-secret", "cloudId": "cloud-1"},
+        )
+
+    assert resp.status_code == 200
+    assert len(notifier.requests) == 1
+    request = notifier.requests[0]
+    assert request.job_id == resp.json()["jobId"]
+    assert request.mode == "full"
+    assert request.status is IngestJobStatus.COMPLETED
+    assert request.cloud_id == "cloud-1"
+    assert request.error is None
+    assert "token-secret" not in str(request.to_payload())
+
+
+@pytest.mark.asyncio
+async def test_ingest_failure_still_notifies_bff_admin_key_revoke() -> None:
+    """수집 실패도 terminal 상태이므로 BFF revoke 요청을 보낸다."""
+    notifier = _RecordingAdminKeyRevokeNotifier()
+    deps = _stub_deps(notifier=notifier, fail_crawl=True)
+
+    async with _client(deps) as client:
+        resp = await client.post(
+            "/ml/ingest",
+            json={"mode": "full", "accessToken": "token-secret", "cloudId": "cloud-2"},
+        )
+        job_id = resp.json()["jobId"]
+        status_resp = await client.get(f"/ml/ingest/status/{job_id}")
+
+    assert status_resp.status_code == 200
+    assert status_resp.json()["status"] == "FAILED"
+    assert len(notifier.requests) == 1
+    request = notifier.requests[0]
+    assert request.job_id == job_id
+    assert request.status is IngestJobStatus.FAILED
+    assert request.cloud_id == "cloud-2"
+    assert request.error == "crawl failed"
+
+
+@pytest.mark.asyncio
+async def test_admin_key_revoke_failure_does_not_mask_completed_status() -> None:
+    """BFF revoke callback 실패는 job terminal 상태를 덮어쓰지 않는다."""
+    notifier = _RecordingAdminKeyRevokeNotifier(fail=True)
+    deps = _stub_deps(notifier=notifier)
+
+    async with _client(deps) as client:
+        resp = await client.post("/ml/ingest", json={"mode": "full"})
+        job_id = resp.json()["jobId"]
+        status_resp = await client.get(f"/ml/ingest/status/{job_id}")
+
+    assert status_resp.status_code == 200
+    assert status_resp.json()["status"] == "COMPLETED"
+    assert len(notifier.requests) == 1
+
+
+@pytest.mark.asyncio
 async def test_ingest_delta_mode_uses_delta_runner_and_counts_changed_deleted_failed() -> None:
     """mode=delta 는 Data Sync runner 를 호출하고 변경/삭제후보/실패 집계를 status 에 반영한다."""
     deps = _stub_deps()
@@ -115,6 +197,27 @@ async def test_ingest_delta_mode_uses_delta_runner_and_counts_changed_deleted_fa
     assert status["totalPages"] == 4  # 2 changed + 1 deleted candidate + 1 failed
     assert status["processedPages"] == 3  # changed + deleted candidate
     assert status["failedPages"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_delta_completion_notifies_bff_admin_key_revoke() -> None:
+    """Delta 수집 완료 후에도 BFF Admin Key revoke callback을 호출한다."""
+    notifier = _RecordingAdminKeyRevokeNotifier()
+    deps = _stub_deps(notifier=notifier)
+
+    async with _client(deps) as client:
+        resp = await client.post(
+            "/ml/ingest",
+            json={"mode": "delta", "accessToken": "token-secret", "cloudId": "cloud-delta"},
+        )
+
+    assert resp.status_code == 200
+    assert len(notifier.requests) == 1
+    request = notifier.requests[0]
+    assert request.job_id == resp.json()["jobId"]
+    assert request.mode == "delta"
+    assert request.status is IngestJobStatus.COMPLETED
+    assert request.cloud_id == "cloud-delta"
 
 
 @pytest.mark.asyncio
