@@ -20,6 +20,8 @@
     까지는 ``.env`` 의 ``RAG_CROSS_ENCODER_MODEL`` 로 우회 중이었으며 본 fix 로
     코드 기본값만으로도 운영 모드(``RAG_USE_REAL_ADAPTERS=true``) 에서 모델
     로드 성공.
+  - 2026-06-10, 회의록 ACL 정합화 — empty restriction 기본값을 ``mark_missing`` 으로
+    변경해 inherited restriction 미해석 상태에서 과다 노출을 방지한다.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x, Pydantic 2.7+, pydantic-settings 2.3+
@@ -64,10 +66,10 @@ class Settings(BaseSettings):
     # 필요 시 group 값 앞에 붙일 prefix. 기본값은 무변환이며, 예: "confluence-group:".
     atlassian_group_acl_prefix: str = ""
     # Page-level read restriction 이 비어 있을 때의 처리 정책.
-    # allow_authenticated(기본): public_acl_group sentinel 부여 → 모든 인증 사용자 허용.
+    # mark_missing(기본): 빈 ACL 로 두어 색인 단계에서 INVALID_ACL 처리(fail-closed).
+    # allow_authenticated(opt-in): public_acl_group sentinel 부여 → 모든 인증 사용자 허용.
     # space_fallback: PoC/데모용으로 space:{space_key} ACL 합성.
-    # mark_missing: 빈 ACL 로 두어 색인 단계에서 INVALID_ACL 처리.
-    atlassian_empty_restriction_policy: str = "allow_authenticated"
+    atlassian_empty_restriction_policy: str = "mark_missing"
     # allow_authenticated 정책에서 부여할 "모든 인증 사용자" sentinel group 토큰.
     # RAG build_acl_filter의 PUBLIC_ACL_GROUP과 반드시 동일해야 한다.
     atlassian_public_acl_group: str = "*"

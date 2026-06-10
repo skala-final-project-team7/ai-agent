@@ -186,6 +186,53 @@ def test_parse_read_restrictions_acl_maps_groups_and_users() -> None:
     assert users == ["712020:user-1", "712020:user-2"]
 
 
+def test_parse_read_restrictions_acl_prefers_group_id_over_name_by_default() -> None:
+    raw = {
+        "operation": "read",
+        "restrictions": {
+            "group": {
+                "results": [
+                    {
+                        "id": "00000000-0000-0000-0000-000000000123",
+                        "groupId": "legacy-group-id",
+                        "name": "Cloud-Control-Center",
+                    }
+                ]
+            },
+            "user": {"results": []},
+        },
+    }
+
+    groups, users = parse_read_restrictions_acl(raw)
+
+    assert groups == ["00000000-0000-0000-0000-000000000123"]
+    assert "Cloud-Control-Center" not in groups
+    assert users == []
+
+
+def test_parse_read_restrictions_acl_uses_group_id_when_id_is_absent() -> None:
+    raw = {
+        "operation": "read",
+        "restrictions": {
+            "group": {
+                "results": [
+                    {
+                        "groupId": "confluence-group-123",
+                        "name": "Cloud-Control-Center",
+                    }
+                ]
+            },
+            "user": {"results": []},
+        },
+    }
+
+    groups, users = parse_read_restrictions_acl(raw)
+
+    assert groups == ["confluence-group-123"]
+    assert "Cloud-Control-Center" not in groups
+    assert users == []
+
+
 def test_parse_read_restrictions_acl_uses_configured_group_field_order() -> None:
     raw = {
         "operation": "read",
@@ -203,6 +250,25 @@ def test_parse_read_restrictions_acl_uses_configured_group_field_order() -> None
     groups, users = parse_read_restrictions_acl(raw, group_identifier_fields=("name", "id"))
 
     assert groups == ["frontend", "platform"]
+    assert users == []
+
+
+def test_confluence_restriction_acl_provider_explicit_acl_does_not_emit_space_fallback() -> None:
+    client = _FakeRestrictionClient(
+        {
+            "operation": "read",
+            "restrictions": {
+                "group": {"results": [{"id": "group-id-1", "name": "frontend"}]},
+                "user": {"results": []},
+            },
+        }
+    )
+    provider = ConfluenceRestrictionAclProvider(client=client)
+
+    groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
+
+    assert groups == ["group-id-1"]
+    assert all(not group.startswith("space:") for group in groups)
     assert users == []
 
 

@@ -72,7 +72,7 @@ RAG_ATLASSIAN_ACCESS_TOKEN=...
 RAG_ATLASSIAN_USE_ADMIN_KEY=false
 RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER=id,groupId,name
 RAG_ATLASSIAN_GROUP_ACL_PREFIX=
-RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated
+RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing
 RAG_ATLASSIAN_PUBLIC_ACL_GROUP=*
 RAG_RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2F
 RAG_MONGO_URI=mongodb://localhost:27017
@@ -164,6 +164,11 @@ python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<page-id>
 sample page의 일반/Admin Key 조회 HTTP status, read restriction user/group 수를 요약한다.
 토큰 값은 출력하지 않으며 Admin Key 말소도 수행하지 않는다. 실제 API Token 값은 문서나
 커밋에 남기지 않는다. 노출된 토큰은 Atlassian에서 즉시 폐기하고 재발급한다.
+
+운영 ACL vocabulary는 Confluence `groupId` 기준이다. `allowed_groups=["space:{key}"]`
+합성은 JSON fixture 또는 Admin-Key-off PoC fallback에서만 사용한다. Empty restriction은
+상위 권한 상속을 해석하기 전까지 기본 `mark_missing`으로 fail-closed 처리하며,
+`allow_authenticated`는 공개 sentinel(`*`)을 의도적으로 허용할 때만 opt-in으로 사용한다.
 
 ---
 

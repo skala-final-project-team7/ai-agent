@@ -99,15 +99,16 @@ payload 필드로 복원한다.
 > - **(B) 운영 page-level ACL — 도입 예정.** Confluence read restriction의 user/group 결과를
 >   각각 `allowed_users` / `allowed_groups`로 매핑한다. page-level restriction이 비어 있어도
 >   상위 folder/page restriction 또는 space permission으로 일반 조회가 차단될 수 있으므로,
->   상위 권한 계층 처리 정책을 함께 정의해야 한다. group restriction 값은
->   `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER`(`id,groupId,name` 기본)와
->   `RAG_ATLASSIAN_GROUP_ACL_PREFIX`로 정규화할 수 있으나, 최종 문자열은 BFF JWT
+>   상위 권한 계층 처리 정책을 함께 정의해야 한다. group restriction 값은 Confluence
+>   `groupId`를 기준 vocabulary로 사용한다. 기본 우선순위는
+>   `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER=id,groupId,name`이며, 최종 문자열은 BFF JWT
 >   `groups` claim과 정확히 일치해야 한다. restriction empty 기본 정책은
->   기본 정책은 `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=allow_authenticated`이며, 이때
+>   `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing`으로, 빈 ACL을 색인 단계에서
+>   `INVALID_ACL` 처리한다(fail-closed). 공개 페이지로 의도적으로 취급하려면
+>   `allow_authenticated`를 opt-in으로 설정해
 >   `allowed_groups=[RAG_ATLASSIAN_PUBLIC_ACL_GROUP]`(기본 `"*"`)를 부여한다. RAG 검색은
->   동일 sentinel을 모든 principal의 group 조건에 주입한다. 보수 운영이 필요하면
->   `mark_missing`으로 바꿔 빈 ACL을 색인 단계에서 `INVALID_ACL` 처리할 수 있고, PoC/데모에서는
->   `space_fallback`으로 `space:{space_key}` ACL을 합성할 수 있다.
+>   동일 sentinel을 모든 principal의 group 조건에 주입한다. PoC/데모에서는 `space_fallback`으로
+>   `space:{space_key}` ACL을 합성할 수 있다.
 >
 > Payload는 `space_key` + `allowed_groups` + `allowed_users`를 **모두 인덱싱**한 채로 둔다.
 > 검색 필터 생성은 `app/query/acl.py`에 격리되어 있어, 수집 단계가 page-level ACL을 채우면

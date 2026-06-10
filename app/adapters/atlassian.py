@@ -14,8 +14,10 @@
     호출(run_full_crawl_workflow 블랙박스) + ProcessedDocument→PageObject 매핑 +
     space_key 기반 PoC ACL 합성. 2026-06-02 Admin Key 실측으로 page-level read
     restriction API 적용 가능성을 확인했으며, 운영 ACL 수집은 후속 작업으로 분리.
-  - 2026-06-05, api-spec v2.4.0 정합 — empty restriction `allow_authenticated` 정책과
-    public ACL sentinel 설정을 지원한다.
+  - 2026-06-05, api-spec v2.4.0 정합 — empty restriction 정책과 public ACL sentinel
+    설정을 지원한다.
+  - 2026-06-10, 회의록 ACL 정합화 — 운영 group vocabulary는 Confluence `groupId` 기준,
+    empty restriction 기본값은 fail-closed `mark_missing`으로 정리한다.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x (vendored 에이전트가 enum.StrEnum 사용)

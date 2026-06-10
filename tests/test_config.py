@@ -73,7 +73,7 @@ def test_atlassian_acl_mapping_settings_defaults() -> None:
     settings = _settings_without_env_file()
     assert settings.atlassian_group_acl_field_order == "id,groupId,name"
     assert settings.atlassian_group_acl_prefix == ""
-    assert settings.atlassian_empty_restriction_policy == "allow_authenticated"
+    assert settings.atlassian_empty_restriction_policy == "mark_missing"
     assert settings.atlassian_public_acl_group == "*"
 
 

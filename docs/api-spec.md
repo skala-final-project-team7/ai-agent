@@ -36,7 +36,9 @@
 >   분리하고 기존 `app/api/routes.py`는 query compatibility alias로 유지.
 > - 2026-06-05, api-spec v2.4.0 정합. `/ml/query`와 `/ml/ingest` 요청 본문에서 `spaceKey`
 >   제거, `/ml/query`는 cross-space 검색으로 전환, `/ml/ingest`는 Admin Key로 접근 가능한
->   전체 스페이스 수집으로 전환. public ACL sentinel(`*`)과 `allow_authenticated` 기본 정책 반영.
+>   전체 스페이스 수집으로 전환. public ACL sentinel(`*`)과 empty restriction 정책 반영.
+> - 2026-06-10, 회의록 ACL 정합화. 운영 `allowed_groups` vocabulary는 Confluence `groupId`
+>   기준이며, empty restriction 기본 정책은 fail-closed `mark_missing`으로 정리.
 > - 2026-06-05, api-spec v2.5.0 정합. Admin Key 말소 트리거를 BFF polling watcher/ML HTTP
 >   callback에서 RabbitMQ completion event로 전환한다. ML/Data Ingestion은 credential 없는
 >   completion event를 발행하고, BFF consumer가 auth-server deactivate 내부 API를 호출한다.

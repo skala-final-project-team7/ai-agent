@@ -19,6 +19,108 @@ RAG Pipeline 작업 이력을 시간순으로 기록한다.
 
 ---
 
+## 2026-06-10 — ai-agent 패키징/소비 import 통합 테스트 착수
+
+- 브랜치: `main` 기준 작업 시작(사용자 요청: ai-agent 담당 범위만 수정, 타 레포 수정 금지)
+- 작업 배경:
+  - `ingestion-deploy`/`rag-deploy`가 vendored agent 디렉토리를 제거하고
+    `lina-ai-agents @ ...@v0.1.0` 설치 의존성으로 전환됨.
+  - 따라서 ai-agent의 installable surface가 6개 top-level agent 패키지로 고정되어야 하며,
+    루트 통합 앱 `app*`가 배포 산출물에 포함되면 deploy 레포의 `app` 패키지와 충돌한다.
+  - 2026-06-10 회의록 기준 운영 ACL vocabulary는 Confluence `groupId`이며,
+    `space:{space_key}`는 fixture/Admin-Key-off PoC fallback으로만 격리해야 한다.
+- 변경 사항:
+  - `docs/ai/integration-test-plan-2026-06-10.md` 신규 작성.
+    - 범위: `/Users/younghoonlee/workspace_git/ai-agent` 한정.
+    - 다른 레포(`backend-template`, `frontend`, `ingestion`, `rag`, `ingestion-deploy`,
+      `rag-deploy`)는 read-only integration contract로만 사용한다고 명시.
+    - Phase 1~6으로 패키징 surface, deploy 소비 import, ACL groupId 회귀, 문서 정합화,
+      선택적 isolated install 검증을 분해.
+  - `tests/packaging/test_package_surface.py` 신규 추가.
+    - `[project].name == "lina-ai-agents"` 회귀 방지.
+    - `packages.find.include`가 6개 agent 패턴만 포함하고 `app*`를 포함하지 않음을 고정.
+    - `setuptools.find_packages` 기준 top-level package가 6개 agent뿐임을 검증.
+    - deploy 소비 import contract를 고정:
+      `data_ingestion_agent.config.DataIngestionConfig`,
+      `data_ingestion_agent.workflow.run_full_crawl_workflow`,
+      `data_sync_agent.workflow.run_data_sync_workflow`,
+      `history_manager_agent.history.normalize_history_input_payload`,
+      `query_routing_agent.llm.FakeRoutingLLMProvider`,
+      `answer_generation_agent.generation.answer_generation.OpenAIAnswerLLMProvider`,
+      `answer_verification_agent.evaluator.providers.FakeEvaluatorProvider` 등.
+  - `tests/adapters/test_atlassian.py` 보강.
+    - Confluence restriction group에 `id`/`groupId`/`name`이 함께 있을 때 기본값은 `id`를
+      `allowed_groups`로 사용함을 검증.
+    - `id`가 없고 `groupId`만 있을 때 `groupId`를 사용함을 검증.
+    - explicit page-level ACL이 있을 때 `space:{space_key}` fallback을 emit하지 않음을 검증.
+  - `app/config.py` 정합화.
+    - `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY` 기본값을 `allow_authenticated`에서
+      `mark_missing`으로 변경.
+    - inherited restriction 미해석 상태에서 공개 페이지로 단정하지 않고 fail-closed하는
+      보수 기본값으로 조정.
+  - 문서 정합화.
+    - `README.md`: 환경 변수 예시를 `mark_missing`으로 변경하고, 운영 `allowed_groups`
+      vocabulary는 Confluence `groupId`, `space:{key}`는 PoC fallback 전용임을 명시.
+    - `docs/ai/current-plan.md`: 운영 group vocabulary와 empty restriction 기본 정책 갱신.
+    - `docs/atlassian-api.md`: `mark_missing` 기본, `allow_authenticated` opt-in 설명으로 갱신.
+    - `docs/db-schema.md`: ACL payload 설명을 `groupId`/fail-closed 기준으로 갱신.
+    - `docs/api-spec.md`: changelog에 2026-06-10 ACL 정합화 기록 추가.
+- 수정 파일:
+  - `app/config.py`
+  - `app/adapters/atlassian.py`
+  - `tests/packaging/__init__.py`
+  - `tests/packaging/test_package_surface.py`
+  - `tests/adapters/test_atlassian.py`
+  - `tests/test_config.py`
+  - `README.md`
+  - `docs/ai/current-plan.md`
+  - `docs/ai/integration-test-plan-2026-06-10.md`
+  - `docs/atlassian-api.md`
+  - `docs/db-schema.md`
+  - `docs/api-spec.md`
+  - `docs/ai/working-log.md`
+- 실행 명령 / 테스트 결과:
+  - `./.venv/bin/python -m pytest --collect-only -q`
+    - 결과: `1017 tests collected`, 수집 성공.
+  - `./.venv/bin/python -m pytest tests/packaging tests/adapters/test_atlassian.py tests/test_config.py`
+    - 결과: `36 passed`(최종 재실행 기준 `36 passed in 0.10s`).
+  - `./.venv/bin/python -m pytest tests/data_ingestion_agent/tests/integration tests/data_sync_agent/tests/integration tests/history_manager_agent/integration`
+    - 결과: `52 passed, 1 warning`.
+    - warning: `langgraph.checkpoint`의 `LangChainPendingDeprecationWarning` 기존 의존성 경고.
+  - `./.venv/bin/python -m pytest tests/query/test_history.py tests/query/test_router.py tests/query/test_generator.py tests/query/test_verifier_evaluator.py`
+    - 결과: `63 passed`.
+  - `./.venv/bin/ruff format .`
+    - 결과: `199 files left unchanged`.
+  - `./.venv/bin/ruff check .`
+    - 1차 결과: `tests/packaging/test_package_surface.py` import 정렬 `I001` 1건 감지.
+  - `./.venv/bin/ruff check tests/packaging/test_package_surface.py --fix`
+    - 결과: `Found 1 error (1 fixed, 0 remaining)`.
+  - `./.venv/bin/mypy app`
+    - 결과: `Success: no issues found in 97 source files`.
+  - `./.venv/bin/ruff check .`
+    - 최종 결과: `All checks passed!`.
+  - `./.venv/bin/python -m pytest`
+    - 최종 결과: `1024 passed, 7 warnings in 5.60s`.
+    - warning: 기존 의존성/로컬 실행 경고(`LangChainPendingDeprecationWarning`, SWIG
+      deprecation, local Qdrant payload index warning)이며 테스트 실패 없음.
+  - `uv pip install --python ./.venv/bin/python build wheel`
+    - 결과: `build==1.5.0`, `wheel==0.47.0` 설치.
+  - `./.venv/bin/python -m build --sdist --wheel --no-isolation`
+    - 결과: `dist/lina_ai_agents-0.1.0.tar.gz`,
+      `dist/lina_ai_agents-0.1.0-py3-none-any.whl` 생성 성공.
+  - wheel `lina_ai_agents-0.1.0.dist-info/top_level.txt` 확인.
+    - 결과: `answer_generation_agent`, `answer_verification_agent`,
+      `data_ingestion_agent`, `data_sync_agent`, `history_manager_agent`,
+      `query_routing_agent` 6개만 포함. 루트 `app` 미포함.
+- 평가 결과:
+  - 패키지 surface 기준 6개 agent top-level 패키지 노출 확인.
+  - `app*`가 installable package include에 포함되지 않도록 테스트로 고정.
+  - deploy-facing import contract를 ai-agent 내부 회귀 테스트로 고정.
+  - 운영 ACL vocabulary를 `groupId` 우선으로 테스트 보강.
+- 남은 TODO:
+  - 실제 tenant의 Confluence restriction group 응답이 `id`를 제공하는지 확인. 미제공 시
+    name→id mapping 구현 필요.
+
 ## 2026-05-26 — ADR 0003 항목 4 적용: soft_delete 도입 (승인됨)
 
 - 브랜치: `feat/#NN/soft-delete` 제안
