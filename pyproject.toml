@@ -1,5 +1,5 @@
 [project]
-name = "lina-rag-pipeline"
+name = "lina-ai-agents"
 version = "0.1.0"
 description = "척척학사(LINA) Confluence 기반 RAG 챗봇 서비스의 RAG 파이프라인"
 requires-python = ">=3.11,<3.12"
@@ -70,12 +70,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
+# data_ingestion_agent: ai-agent 저장소에서 vendoring한 Data Ingestion Agent 패키지
+# data_sync_agent: ai-agent 저장소에서 vendoring한 Data Sync Agent 패키지
 # history_manager_agent: ai-agent 저장소에서 vendoring한 History Manager Agent 패키지
 # query_routing_agent: ai-agent 저장소에서 vendoring한 Query Routing Agent 패키지
 # answer_generation_agent: ai-agent 저장소에서 vendoring한 Answer Generation Agent 패키지
 # answer_verification_agent: ai-agent 저장소에서 vendoring한 Answer Verification Agent 패키지
 include = [
-    "app*",
     "data_ingestion_agent*",
     "data_sync_agent*",
     "history_manager_agent*",
