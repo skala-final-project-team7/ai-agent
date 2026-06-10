@@ -19,6 +19,60 @@ RAG Pipeline 작업 이력을 시간순으로 기록한다.
 
 ---
 
+## 2026-06-10 — api-spec v2.6.0 ACL 문서 정합화
+
+- 브랜치: `main` 기준 후속 작업(사용자 요청: ai-agent 관점 후속 진행)
+- 작업 배경:
+  - RAG/Ingestion 담당자 공유 메시지 기준, 최종 API 계약은 v2.6.0으로 정리됐다.
+  - 핵심 변경은 `/ml/query`의 `userId`/`groups` vocabulary와 fail-closed 정책:
+    `userId`는 Confluence `accountId`, `groups`는 Confluence `groupId[]`, `groups=[]`는 허용,
+    fail-closed 게이트는 `userId` 기준만 적용한다.
+  - ai-agent 코드는 이미 `groups=[]` 요청을 허용하고 public sentinel(`*`)을 ACL filter에
+    주입한다. 남은 작업은 stale 문서 정합화였다.
+- 변경 사항:
+  - `docs/api-spec.md`
+    - v2.6.0 변경 이력 추가.
+    - `/ml/query` Request Body 설명을 `userId=accountId`, `groups=groupId[]`,
+      `groups=[]` 허용으로 갱신.
+    - 예시 payload를 데모 group name에서 실제 accountId/groupId 형태로 변경.
+    - ACL fail-closed 설명을 `userId` 기준만으로 수정.
+  - `docs/sse-frontend-contract.md`
+    - 정본 계약 버전을 v2.6.0으로 갱신.
+    - `groups=[]` 허용과 groupId vocabulary를 FE handoff 문서에 반영.
+  - `docs/db-schema.md`, `docs/atlassian-api.md`
+    - 운영 `allowed_groups`는 BFF `groups`(`groupId[]`)와 동일 vocabulary,
+      `allowed_users`는 BFF `userId`(`accountId`)와 동일 vocabulary라고 명시.
+    - `space:{key}`는 fixture/Admin-Key-off fallback 전용으로 격리.
+  - `docs/adr/0002-acl-prefix-convention.md`, `docs/adr/0003-ingestion-rag-shared-contracts.md`
+    - 기존 PoC `space:{key}` 결정 위에 v2.6.0 운영 ACL 업데이트 노트를 추가.
+    - 운영 경로는 `accountId`/`groupId` vocabulary를 사용한다고 명시.
+  - `tests/api/test_query_route.py`
+    - `groups=[]` 허용 테스트 docstring을 v2.6.0 기준으로 정정.
+- 수정 파일:
+  - `docs/api-spec.md`
+  - `docs/sse-frontend-contract.md`
+  - `docs/db-schema.md`
+  - `docs/atlassian-api.md`
+  - `docs/adr/0002-acl-prefix-convention.md`
+  - `docs/adr/0003-ingestion-rag-shared-contracts.md`
+  - `tests/api/test_query_route.py`
+  - `docs/ai/working-log.md`
+- 실행 명령 / 테스트 결과:
+  - stale 문구 검색(`groups=[] 차단`, 데모 `user-001`/group name 예시, v2.4 정본 표기 등)
+    - 결과: 현재성 있는 stale 문구 없음.
+  - `./.venv/bin/ruff check tests/api/test_query_route.py`
+    - 결과: `All checks passed!`.
+  - `./.venv/bin/python -m pytest tests/api/test_query_route.py::test_query_route_empty_groups_returns_422 tests/query/test_acl.py`
+    - 결과: `19 passed, 7 warnings in 0.89s`.
+    - warning: 기존 의존성/로컬 Qdrant 경고이며 테스트 실패 없음.
+  - `git diff --check`
+    - 결과: 공백 오류 없음.
+- 남은 TODO:
+  - 실 tenant Confluence restriction 응답에서 group object가 `id`/`groupId` 중 무엇을 제공하는지
+    통합 smoke에서 확인.
+  - name만 오는 tenant라면 `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER` 설정 조정 또는 name→id
+    매핑 후속 구현 여부 결정.
+
 ## 2026-06-10 — ai-agent 패키징/소비 import 통합 테스트 착수
 
 - 브랜치: `main` 기준 작업 시작(사용자 요청: ai-agent 담당 범위만 수정, 타 레포 수정 금지)

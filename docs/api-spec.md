@@ -7,7 +7,8 @@
 
 > 인증/JWT 발급·Gateway 라우팅·대화/메시지 영속화·피드백·미리보기 등 FE↔BFF 외부 API는
 > BFF/BE 담당 영역이다. 본 파이프라인은 BFF가 전달한 `userId`/`groups`로 ACL 필터를 만들고,
-> `spaceKey` 없이 사용자가 접근 가능한 전체 색인 범위에서 cross-space 검색한다(api-spec v2.4.0).
+> `spaceKey` 없이 사용자가 접근 가능한 전체 색인 범위에서 cross-space 검색한다. v2.6.0 기준
+> `userId`는 Confluence `accountId`, `groups`는 Confluence `groupId[]`다.
 
 > **변경 이력**
 > - 2026-05-22, feature13 — BE 통합 스펙 반영(문서). 엔드포인트 `/api/v1/rag/query` → `/ml/query`,
@@ -44,6 +45,9 @@
 >   completion event를 발행하고, BFF consumer가 auth-server deactivate 내부 API를 호출한다.
 >   `/ml/ingest`는 `adminUserId`를 preferred 식별자로 받고, `accessToken`/`cloudId`는
 >   backend OAuth/RabbitMQ 완성 전 legacy PoC 호환 필드로만 유지한다.
+> - 2026-06-10, api-spec v2.6.0 정합. `/ml/query` 식별자는 `userId`=Confluence
+>   `accountId`, `groups`=`groupId[]`로 정리한다. `groups=[]`는 허용하며 fail-closed
+>   게이트는 `userId` 기준만 적용한다.
 
 ---
 
@@ -82,8 +86,8 @@ uvicorn app.api.main:app --host 0.0.0.0 --port 8000
 | `question` | string | Y | 사용자 자연어 질문 |
 | `conversationId` | string | N | 대화 컨텍스트 ID |
 | `history` | array | N | 이전 대화 이력 `[{ "role": "user"\|"assistant", "content": "..." }]`. BFF가 DB에서 조회해 전달(멀티턴). `role` 값은 lowercase |
-| `userId` | string | Y | ACL Pre-filtering 사용자 식별자(BFF가 JWT에서 추출, 2단계 데모는 고정값) |
-| `groups` | string[] | Y | 사용자 그룹 — ACL `should`-OR 필터. BFF는 빈 배열을 fail-closed로 차단한다 |
+| `userId` | string | Y | ACL Pre-filtering 사용자 식별자. 3단계 실제값은 Confluence `accountId`; 2단계 데모는 고정값 |
+| `groups` | string[] | Y | 사용자 그룹 = Confluence `groupId` 배열. ACL `should`-OR 필터. 빈 배열 허용 |
 | `stream` | boolean | N | 기본값 `false`. BFF는 항상 `true`로 호출한다. PoC 환경에서는 `true`여도 non-streaming fallback으로 `token` 이벤트가 1회 내려올 수 있다 |
 
 ```json
@@ -94,15 +98,19 @@ uvicorn app.api.main:app --host 0.0.0.0 --port 8000
     { "role": "user", "content": "S3 관련 장애 이력 알려줘" },
     { "role": "assistant", "content": "최근 S3 관련 장애는 3건이 있었습니다..." }
   ],
-  "userId": "user-001",
-  "groups": ["Cloud-Control-Center"],
+  "userId": "712020:91b5112c-0000-0000-0000-000000000000",
+  "groups": ["confluence-group-id-001"],
   "stream": true
 }
 ```
 
-> **ACL fail-closed** — 최신 backend 계약상 `userId`가 비어 있거나 `groups=[]`이면 BFF가
-> `/ml/query` 호출을 차단한다. RAG/ML 단은 public ACL sentinel 매칭을 위해 빈 groups 요청도
-> 구조적으로 처리할 수 있지만, 운영 호출 경로에서는 BFF 게이트가 우선이다.
+> 위 `userId`/`groups` 예시는 3단계 실제값이다. 2단계 데모 환경은
+> `lina.demo.fixed-user-id`/`lina.demo.fixed-groups` 고정값을 사용할 수 있다.
+
+> **ACL fail-closed (v2.6.0)** — `userId`가 비어 있으면 BFF가 `/ml/query` 호출을 차단한다.
+> `groups=[]`는 허용한다. Confluence group 미소속 사용자도 `allowed_users`의 accountId 또는
+> 공개 sentinel(`*`)로 매칭될 수 있기 때문이다. ML 단도 `groups=[]` 요청을 정상 처리하며,
+> `build_acl_filter`가 public sentinel을 group 조건에 추가한다.
 
 > **`accessToken`/`cloudId` 미수신 (api-spec v2.2.0, 2026-05-22 변경)** — 권한은 수집 시 Qdrant
 > payload(`allowed_groups`/`allowed_users`)에 ACL로 저장되고 질의 시 `userId`/`groups`로

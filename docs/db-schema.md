@@ -93,16 +93,18 @@ payload 필드로 복원한다.
 > `/rest/api/content/{pageId}/restriction/byOperation/read`에서 별도 조회할 수 있음이 확인됐다.
 > 따라서 운영 Confluence 수집 경로는 아래 (B)를 후속 구현 목표로 둔다.
 >
-> - **(A) PoC `space_key` 기반 — 현재 구현 유지.** 수집 시 `allowed_groups`를
+> - **(A) PoC `space_key` 기반 — fixture/Admin-Key-off fallback 전용.** 수집 시 `allowed_groups`를
 >   `["space:{space_key}"]`로 합성하고(`_synthesize_acl`/`synthesize_space_acl`), 검색 시
->   BFF가 전달한 `groups=["space:{key}"]`와 매칭한다. 입도는 스페이스 단위.
+>   같은 PoC vocabulary의 `groups=["space:{key}"]`와 매칭한다. 입도는 스페이스 단위.
+>   v2.6.0 운영 경로의 BFF JWT `groups`는 `groupId[]`이므로 이 합성값과 섞지 않는다.
 > - **(B) 운영 page-level ACL — 도입 예정.** Confluence read restriction의 user/group 결과를
 >   각각 `allowed_users` / `allowed_groups`로 매핑한다. page-level restriction이 비어 있어도
 >   상위 folder/page restriction 또는 space permission으로 일반 조회가 차단될 수 있으므로,
 >   상위 권한 계층 처리 정책을 함께 정의해야 한다. group restriction 값은 Confluence
 >   `groupId`를 기준 vocabulary로 사용한다. 기본 우선순위는
 >   `RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER=id,groupId,name`이며, 최종 문자열은 BFF JWT
->   `groups` claim과 정확히 일치해야 한다. restriction empty 기본 정책은
+>   `groups` claim(`groupId[]`)과 정확히 일치해야 한다. `allowed_users`는 Confluence
+>   `accountId`이며 BFF의 `userId`와 같은 vocabulary다. restriction empty 기본 정책은
 >   `RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY=mark_missing`으로, 빈 ACL을 색인 단계에서
 >   `INVALID_ACL` 처리한다(fail-closed). 공개 페이지로 의도적으로 취급하려면
 >   `allow_authenticated`를 opt-in으로 설정해

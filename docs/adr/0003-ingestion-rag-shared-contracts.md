@@ -7,6 +7,11 @@
 - 적용 범위: `ingestion` 레포(Data Ingestion Pipeline)와 `rag` 레포(RAG Pipeline) **양쪽 동일 기록**.
   본 ADR은 두 레포 `docs/adr/0003-*.md`에 동일 내용으로 복제한다.
 
+> **운영 ACL 업데이트 (2026-06-10, api-spec v2.6.0)**: 항목 1의 `space:{key}` 합성은
+> PoC fixture/Admin-Key-off fallback으로만 유지한다. 운영 수집은 Confluence read
+> restriction의 `accountId`/`groupId`를 `allowed_users`/`allowed_groups`로 저장하고,
+> BFF는 `/ml/query`에 `userId=accountId`, `groups=groupId[]`를 전달한다.
+
 ## 배경
 
 `ingestion`의 `app/schemas`, `app/ingestion/{chunker,embedder,embedding,vector_store,indexer}`,
@@ -48,8 +53,10 @@ Confluence page-level read restriction 조회가 가능함을 확인했으므로
   (`app/adapters/atlassian.py:synthesize_space_acl`, `app/adapters/json_fixture.py:_synthesize_acl`).
   `allowed_users`는 빈 목록.
 - rag는 검색 시 `app/query/acl.py:build_acl_filter`가 JWT `groups` 클레임을 `allowed_groups`에
-  OR 매칭한다. **BFF는 JWT `groups`를 `space:{key}` 형식으로 채워야 한다**(예:
-  `groups=["space:CLOUD","space:CCC"]`). 이 prefix 컨벤션은 이미 **ADR 0002**로 동결돼 있다.
+  OR 매칭한다. PoC fixture 경로에서는 `groups=["space:CLOUD","space:CCC"]`처럼 같은 합성
+  vocabulary를 전달해야 한다. 운영 경로에서는 BFF가 `groups=groupId[]`를 전달하고,
+  수집 payload도 같은 `groupId` vocabulary를 사용한다. 이 prefix 컨벤션은 이미
+  **ADR 0002**로 동결돼 있다.
 - 운영 Confluence/Admin Key ingestion은 page restriction API 응답을 `allowed_users` /
   `allowed_groups`로 매핑한다.
 - payload는 결정 후에도 `space_key` + `allowed_groups` + `allowed_users`를 **모두 인덱싱**한 채로

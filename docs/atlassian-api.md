@@ -134,8 +134,8 @@ Atl-Confluence-With-Admin-Key: true
 | `ancestors[].{id,title}` | `ancestors[]` | |
 | `_links.webui` | `webui_link` | 출처 카드 원본 링크 |
 | `attachments[]` | `attachments[]` | 샘플 데이터에 메타만 존재 — 실제 다운로드/추출은 별도 |
-| `restriction/byOperation/read.restrictions.group.results[]` | `allowed_groups[]` | 운영 ACL. PoC는 `["space:{space_key}"]` 합성 |
-| `restriction/byOperation/read.restrictions.user.results[].accountId` | `allowed_users[]` | 운영 ACL. PoC는 빈 배열 |
+| `restriction/byOperation/read.restrictions.group.results[]` | `allowed_groups[]` | 운영 ACL. 기본 우선순위 `id,groupId,name`; BFF `groups`(`groupId[]`)와 동일 vocabulary 필요. PoC는 `["space:{space_key}"]` 합성 |
+| `restriction/byOperation/read.restrictions.user.results[].accountId` | `allowed_users[]` | 운영 ACL. BFF `userId`(Confluence accountId)와 동일 vocabulary. PoC는 빈 배열 |
 
 ## ACL 결정 (PoC A 유지, 운영 B 전환 준비 — ADR 0003 개정)
 

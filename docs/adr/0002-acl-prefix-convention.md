@@ -1,5 +1,10 @@
 # 0002. PoC ACL 그룹 prefix 컨벤션 — `space:{key}`
 
+> **운영 정책 업데이트 (2026-06-10, api-spec v2.6.0)**: `space:{key}`는 PoC fixture /
+> Admin-Key-off fallback vocabulary로만 유지한다. 운영 `/ml/query`의 `groups`는
+> Confluence `groupId[]`, `userId`는 Confluence `accountId`이며, 수집된
+> `allowed_groups`/`allowed_users`도 같은 vocabulary를 사용한다.
+
 - 상태: 채택
 - 날짜: 2026-05-17
 - 개정: 2026-06-02 — Admin Key 실측 이후 PoC/space fallback 컨벤션으로 범위 명확화
@@ -50,14 +55,15 @@ working-log 2026-05-15 feature2 비고).
 대안 **B**를 채택한다.
 
 - PoC ACL 그룹은 `space:{space_key}` 형식으로 표기한다.
-- BFF는 JWT의 `groups` 클레임에 사용자가 접근 가능한 스페이스를 `space:{key}` 형식으로
-  채운다. 예: 사용자가 CLOUD·CCC 스페이스 접근 가능 → `groups=["space:CLOUD","space:CCC"]`.
+- PoC BFF 또는 로컬 테스트는 JWT의 `groups` 클레임에 사용자가 접근 가능한 스페이스를
+  `space:{key}` 형식으로 채울 수 있다. 예: 사용자가 CLOUD·CCC 스페이스 접근 가능 →
+  `groups=["space:CLOUD","space:CCC"]`. 운영 BFF는 v2.6.0 기준 Confluence `groupId[]`를
+  전달한다.
 - 이 컨벤션은 `JsonFixtureSourceAdapter._synthesize_acl`과 `examples/demo_search.py`가
   암묵적으로 따르던 것을 명시적으로 동결한 것이다.
 - PoC/샘플/space fallback 경로는 이 컨벤션을 따른다.
-- 운영 Confluence path가 page-level restriction으로 `allowed_users` / `allowed_groups`를 채워도,
-  restriction이 없거나 space-level fallback이 필요한 경우 `space:{key}` group을 함께 사용할 수 있다.
-  단, 실제 Confluence group restriction 값과 BFF JWT `groups` claim의 매핑 방식은 별도 합의가 필요하다.
+- 운영 Confluence path는 page-level restriction으로 `allowed_users` / `allowed_groups`를 채운다.
+  `space:{key}` group은 fixture/Admin-Key-off fallback으로만 사용한다.
 
 ## 영향
 
@@ -65,9 +71,8 @@ working-log 2026-05-15 feature2 비고).
 - 후속 작업:
   - PoC/샘플 경로는 계속 `space:{key}` prefix를 사용한다.
   - 운영 page-level ACL 도입 시 `allowed_users`에는 Confluence `accountId`, `allowed_groups`에는
-    backend가 JWT `groups` claim으로 전달할 수 있는 안정 식별자를 넣는다.
-  - BFF 담당자 협의 — JWT `groups` 클레임에 `space:{key}` fallback과 Confluence group restriction
-    값을 어떤 형태로 함께 싣는지 결정.
+    BFF가 JWT `groups` claim으로 전달하는 Confluence `groupId`를 넣는다.
+  - BFF/Auth Server는 JWT `groups` 클레임에 Confluence `groupId[]`를 넣는다.
 - 다른 담당자 영역: BFF/Authorization Server 담당자가 본 ADR을 인지해야 한다.
 
 ## 함께 수정한 문서

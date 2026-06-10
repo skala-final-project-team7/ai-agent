@@ -6,10 +6,12 @@
 컨테이너·모델 없이 동작 — :memory: Qdrant + Fake everything + samples 자동 인덱싱 기본값을
 활용한다.
 
-feature13 마이그레이션 정합 (api-spec v2.4.0):
+feature13 마이그레이션 + v2.6.0 ACL 정합:
   - 엔드포인트 ``/ml/query`` (구 ``/api/v1/rag/query`` 대체).
   - 요청 본문 ``question``/``userId``/``groups``/``conversationId``/``history``/``stream``
     (구 ``query``/``jwt`` 대체 — JWT 미수신, userId/groups 직접 전달).
+    v2.6.0 기준 ``userId`` 는 Confluence accountId, ``groups`` 는 groupId 배열이며
+    빈 groups 도 허용한다.
   - SSE: ``token``=``{"content": ...}``, ``sources``=``{"sources": [...]}``(sourceUpdatedAt),
     ``verification``=집계 ``{"confidenceScore", "verificationResult"}``(검색 0건이면 생략),
     ``meta``(현재 구현 호환용 — intent/used_llm/feedback_enabled/latency_ms + title),
@@ -275,7 +277,7 @@ async def test_query_route_missing_required_fields_returns_422(
 async def test_query_route_empty_groups_returns_422(
     populated_graph: Any,
 ) -> None:
-    """api-spec v2.4.0 — RAG 단은 groups 빈 배열을 허용한다(BFF fail-closed 책임)."""
+    """api-spec v2.6.0 — RAG 단은 groups 빈 배열을 허용한다."""
     async with _client(populated_graph) as client:
         resp = await client.post("/ml/query", json=_body(groups=[]))
     assert resp.status_code == 200
