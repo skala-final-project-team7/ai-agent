@@ -20,6 +20,7 @@ from app.api.ingest_deps import IngestDeps
 from app.api.ingest_routes import get_deps
 from app.api.main import create_app
 from app.ingestion.crawler import CrawlRequest, CrawlResult
+from app.ingestion.credentials import AdminConfluenceCredential, CredentialResolver
 from app.ingestion.sync import DeltaSyncRequest, DeltaSyncResult
 from app.schemas.enums import IngestJobStatus
 from app.storage.ingest_jobs import InMemoryIngestJobStore
@@ -40,10 +41,15 @@ def _stub_deps(
     *,
     completion_publisher: _RecordingCompletionPublisher | None = None,
     fail_crawl: bool = False,
+    credential_resolver: CredentialResolver | None = None,
+    seen_crawl_requests: list[CrawlRequest] | None = None,
+    seen_delta_requests: list[DeltaSyncRequest] | None = None,
 ) -> IngestDeps:
     """stub 크롤 러너(3 성공 + 1 실패)를 가진 IngestDeps — 카운트 집계 결정론."""
 
     def _run_crawl(request: CrawlRequest) -> CrawlResult:
+        if seen_crawl_requests is not None:
+            seen_crawl_requests.append(request)
         if fail_crawl:
             raise RuntimeError("crawl failed")
         return CrawlResult(
@@ -53,6 +59,8 @@ def _stub_deps(
         )
 
     def _run_delta(request: DeltaSyncRequest) -> DeltaSyncResult:
+        if seen_delta_requests is not None:
+            seen_delta_requests.append(request)
         return DeltaSyncResult(
             changed_pages=2,
             deleted_candidate_page_ids=["p-deleted"],
@@ -65,6 +73,7 @@ def _stub_deps(
         run_delta=_run_delta,
         previous_snapshot_path="/tmp/previous_snapshot.json",
         completion_publisher=completion_publisher,
+        credential_resolver=credential_resolver,
     )
 
 
@@ -111,6 +120,21 @@ async def test_ingest_trigger_then_status_completed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingest_uses_bff_job_id_and_retries_are_idempotent() -> None:
+    """api-spec v2.6.x — BFF 가 보낸 jobId 를 유지하고 같은 jobId 재요청은 기존 상태 반환."""
+    deps = _stub_deps()
+    async with _client(deps) as client:
+        first = await client.post("/ml/ingest", json={"jobId": "job-bff-001", "mode": "full"})
+        second = await client.post("/ml/ingest", json={"jobId": "job-bff-001", "mode": "full"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["jobId"] == "job-bff-001"
+    assert second.json()["jobId"] == "job-bff-001"
+    assert second.json()["status"] == "COMPLETED"
+
+
+@pytest.mark.asyncio
 async def test_ingest_full_completion_publishes_rabbitmq_completion_event() -> None:
     """Full 수집 완료 후 ML은 RabbitMQ completion event를 발행한다."""
     publisher = _RecordingCompletionPublisher()
@@ -141,6 +165,50 @@ async def test_ingest_full_completion_publishes_rabbitmq_completion_event() -> N
     assert "cloud-1" not in str(payload)
     assert "accessToken" not in payload
     assert "cloudId" not in payload
+
+
+@pytest.mark.asyncio
+async def test_ingest_full_resolves_admin_credential_before_crawl() -> None:
+    """adminUserId만 받은 운영 경로는 auth-server credential을 내부 request에만 주입한다."""
+    publisher = _RecordingCompletionPublisher()
+    seen_requests: list[CrawlRequest] = []
+    resolved_admin_users: list[str] = []
+
+    def _resolve(admin_user_id: str) -> AdminConfluenceCredential:
+        resolved_admin_users.append(admin_user_id)
+        return AdminConfluenceCredential(
+            access_token="admin-oauth-token-secret",
+            cloud_id="cloud-tenant-1",
+            site_url="https://tenant.atlassian.net",
+            expires_at="2026-06-11T20:00:00+09:00",
+        )
+
+    deps = _stub_deps(
+        completion_publisher=publisher,
+        credential_resolver=_resolve,
+        seen_crawl_requests=seen_requests,
+    )
+
+    async with _client(deps) as client:
+        resp = await client.post(
+            "/ml/ingest",
+            json={"mode": "full", "adminUserId": "712020:admin"},
+        )
+
+    assert resp.status_code == 200
+    assert resolved_admin_users == ["712020:admin"]
+    assert len(seen_requests) == 1
+    request = seen_requests[0]
+    assert request.use_admin_key is False
+    assert request.access_token == "admin-oauth-token-secret"
+    assert request.site_url == "https://tenant.atlassian.net"
+    assert request.cloud_id == "cloud-tenant-1"
+
+    payload = publisher.events[0].to_payload()
+    assert payload["adminUserId"] == "712020:admin"
+    assert "admin-oauth-token-secret" not in str(payload)
+    assert "https://tenant.atlassian.net" not in str(payload)
+    assert "cloud-tenant-1" not in str(payload)
 
 
 @pytest.mark.asyncio
@@ -229,6 +297,36 @@ async def test_ingest_delta_completion_publishes_completion_event() -> None:
     assert event.mode == "delta"
     assert event.status is IngestJobStatus.COMPLETED
     assert event.admin_user_id == "712020:admin"
+
+
+@pytest.mark.asyncio
+async def test_ingest_delta_resolves_admin_credential_before_sync() -> None:
+    """delta 경로도 full과 동일한 auth-server credential seam을 사용한다."""
+    seen_requests: list[DeltaSyncRequest] = []
+
+    def _resolve(admin_user_id: str) -> AdminConfluenceCredential:
+        assert admin_user_id == "712020:admin"
+        return AdminConfluenceCredential(
+            access_token="admin-oauth-token-secret",
+            cloud_id="cloud-tenant-1",
+            site_url="https://tenant.atlassian.net",
+        )
+
+    deps = _stub_deps(credential_resolver=_resolve, seen_delta_requests=seen_requests)
+
+    async with _client(deps) as client:
+        resp = await client.post(
+            "/ml/ingest",
+            json={"mode": "delta", "adminUserId": "712020:admin"},
+        )
+
+    assert resp.status_code == 200
+    assert len(seen_requests) == 1
+    request = seen_requests[0]
+    assert request.use_admin_key is False
+    assert request.access_token == "admin-oauth-token-secret"
+    assert request.site_url == "https://tenant.atlassian.net"
+    assert request.cloud_id == "cloud-tenant-1"
 
 
 @pytest.mark.asyncio

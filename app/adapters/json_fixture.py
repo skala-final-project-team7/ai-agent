@@ -65,9 +65,9 @@ class JsonFixtureSourceAdapter(DocumentSourceAdapter):
 
     samples/*.json(Atlassian-Python-API 응답 포맷)을 표준 PageObject로 변환한다.
 
-    [ACL 합성 — PoC]
-    샘플 데이터에 ACL 필드가 없으므로 space_key 기반으로 allowed_groups를 합성한다.
-    실제 ACL 연동 시 ``_synthesize_acl``만 교체한다 (docs/db-schema.md §1.4 미해결 사항).
+    [ACL 합성 — fixture]
+    샘플 데이터에 ACL 필드가 없으므로 공개 sentinel("*")을 allowed_groups에 부여한다.
+    2026-06-11 회의 결정에 따라 ACL 값에 space key를 싣지 않는다.
 
     [첨부 처리]
     샘플 JSON은 첨부 메타(filename/content_type)만 가진다. 누락 필드는 합성하며,
@@ -113,8 +113,9 @@ class JsonFixtureSourceAdapter(DocumentSourceAdapter):
             yield from data.get("single_page_responses", [])
 
     def _synthesize_acl(self, space_key: str) -> tuple[list[str], list[str]]:
-        """PoC ACL 합성 — space_key 기반 그룹. 실제 ACL 연동 시 교체한다."""
-        return [f"space:{space_key}"], []
+        """Fixture ACL 합성 — 공개 sentinel. space_key는 ACL 값으로 사용하지 않는다."""
+        del space_key
+        return ["*"], []
 
     def _map_page(self, raw: dict) -> PageObject:
         """Atlassian 페이지 응답(dict) → 표준 PageObject."""

@@ -16,6 +16,9 @@
   - 2026-06-05, api-spec v2.5.0 정합 — Admin Key 말소 트리거를 BFF HTTP callback 에서
     RabbitMQ completion event 로 전환. adminUserId 를 preferred job 식별자로 추가하고,
     accessToken/cloudId 직접 전달은 legacy PoC 호환 필드로만 유지.
+  - 2026-06-11, api-spec v2.6.1 정합 — BFF 생성 jobId 수용/idempotent 재요청 처리.
+  - 2026-06-11, api-spec v2.6.2 정합 — auth-server credential lookup 응답을
+    accessToken/cloudId/siteUrl 모델로 정정(siteUrl은 출처 URL 정규화용).
 --------------------------------------------------
 [보안] 요청 ``accessToken``/``cloudId`` 는 로그·응답 본문에 남기지 않는다(루트 CLAUDE.md
        보안 규칙). 상태 응답에도 토큰 관련 필드를 포함하지 않는다.
@@ -27,6 +30,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Annotated, Any
 
@@ -37,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.api.ingest_completion import IngestCompletionEvent, publish_ingest_completion_safely
 from app.api.ingest_deps import IngestDeps
 from app.ingestion.crawler import CrawlRequest
+from app.ingestion.credentials import AdminConfluenceCredential
 from app.ingestion.sync import DeltaSyncRequest
 from app.schemas.enums import IngestJobStatus
 
@@ -60,11 +65,11 @@ def _to_kst(dt: datetime) -> str:
 
 
 class IngestRequest(BaseModel):
-    """``POST /ml/ingest`` 요청 본문 (api-spec v2.5.0 §2-2).
+    """``POST /ml/ingest`` 요청 본문 (api-spec v2.6.2 §2-2).
 
     Preferred 운영 경로는 RabbitMQ ingest job 또는 HTTP 위임 payload 에 credential set 을 싣지
     않고 ``adminUserId`` 만 전달한다. Data Ingestion Worker 는 auth-server 내부 credential API
-    로 admin OAuth ``accessToken`` + ``cloudId`` 를 조회한다.
+    로 콘텐츠 조회용 ``accessToken`` + ``cloudId`` 와 출처 URL 정규화용 ``siteUrl`` 를 조회한다.
 
     ``accessToken``/``cloudId`` 는 backend OAuth 완성 전 local/PoC smoke 호환 필드로만 남긴다.
     production RabbitMQ job/completion payload 에는 절대 포함하지 않는다.
@@ -73,6 +78,11 @@ class IngestRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     mode: str = Field(default="full", description="수집 모드 — full(전체) | delta(변경분)")
+    job_id: str | None = Field(
+        default=None,
+        alias="jobId",
+        description="BFF 생성 작업 식별자. 없으면 Pipeline 이 발급한다.",
+    )
     admin_user_id: str | None = Field(
         default=None,
         alias="adminUserId",
@@ -119,6 +129,7 @@ def _run_full_ingest_job(deps: IngestDeps, job_id: str, crawl_request: CrawlRequ
     """
     deps.job_store.update(job_id, status=IngestJobStatus.IN_PROGRESS)
     try:
+        crawl_request = _resolve_crawl_credentials(deps, crawl_request)
         result = deps.run_crawl(crawl_request)
     except Exception as exc:  # noqa: BLE001 — 크롤/외부 호출 예외 광범위 캐치(잡 단위 격리)
         _LOGGER.exception("ingest job failed: job_id=%s", job_id)
@@ -174,6 +185,7 @@ def _run_delta_ingest_job(deps: IngestDeps, job_id: str, delta_request: DeltaSyn
     """
     deps.job_store.update(job_id, status=IngestJobStatus.IN_PROGRESS)
     try:
+        delta_request = _resolve_delta_credentials(deps, delta_request)
         result = deps.run_delta(delta_request)
     except Exception as exc:  # noqa: BLE001 — sync/외부 호출 예외는 잡 단위로 격리.
         _LOGGER.exception("delta ingest job failed: job_id=%s", job_id)
@@ -246,6 +258,42 @@ def _publish_ingest_completion(
     )
 
 
+def _resolve_crawl_credentials(deps: IngestDeps, request: CrawlRequest) -> CrawlRequest:
+    """Hydrate a full-crawl request with auth-server OAuth credentials when configured."""
+    credential = _resolve_admin_credential(deps, request.admin_user_id)
+    if credential is None:
+        return request
+    return replace(
+        request,
+        access_token=credential.access_token,
+        cloud_id=credential.cloud_id,
+        site_url=credential.site_url,
+    )
+
+
+def _resolve_delta_credentials(deps: IngestDeps, request: DeltaSyncRequest) -> DeltaSyncRequest:
+    """Hydrate a delta-sync request with auth-server OAuth credentials when configured."""
+    credential = _resolve_admin_credential(deps, request.admin_user_id)
+    if credential is None:
+        return request
+    return replace(
+        request,
+        access_token=credential.access_token,
+        cloud_id=credential.cloud_id,
+        site_url=credential.site_url,
+    )
+
+
+def _resolve_admin_credential(
+    deps: IngestDeps,
+    admin_user_id: str | None,
+) -> AdminConfluenceCredential | None:
+    """Resolve auth-server credential by adminUserId without exposing it to payloads/events."""
+    if deps.credential_resolver is None or not admin_user_id:
+        return None
+    return deps.credential_resolver(admin_user_id)
+
+
 @router.post("/ml/ingest")
 async def ingest_route(
     payload: IngestRequest,
@@ -259,7 +307,16 @@ async def ingest_route(
     ``GET /ml/ingest/status/{jobId}`` 로 조회한다. 스페이스 스코프 파라미터는 없으며,
     Admin Key 로 접근 가능한 전체 스페이스를 수집한다.
     """
-    job = deps.job_store.create()
+    if payload.job_id:
+        existing = deps.job_store.get(payload.job_id)
+        if existing is not None:
+            return {
+                "jobId": existing.job_id,
+                "status": existing.status.value,
+                "startedAt": _to_kst(existing.started_at),
+            }
+
+    job = deps.job_store.create(job_id=payload.job_id)
     # credential 값은 legacy request 객체에만 전달하고 로그/응답/큐 메시지에 남기지 않는다.
     if payload.mode == "delta":
         delta_request = DeltaSyncRequest(

@@ -28,6 +28,7 @@ from app.api.ingest_completion import IngestCompletionPublisher, NoopIngestCompl
 from app.config import Settings
 from app.ingestion.bootstrap import build_soft_delete_store
 from app.ingestion.crawler import CrawlRequest, CrawlResult
+from app.ingestion.credentials import CredentialResolver
 from app.ingestion.pipeline import run_poc_ingestion
 from app.ingestion.sync import DeltaSyncRequest, DeltaSyncResult, run_delta_sync
 from app.ingestion.workers.publisher import FakeQueuePublisher
@@ -50,6 +51,7 @@ class IngestDeps:
     previous_snapshot_path: str
     sync_worker: SyncWorker | None = None
     completion_publisher: IngestCompletionPublisher | None = None
+    credential_resolver: CredentialResolver | None = None
 
 
 def build_ingest_deps(settings: Settings) -> IngestDeps:
@@ -72,7 +74,15 @@ def build_ingest_deps(settings: Settings) -> IngestDeps:
     def _run_crawl(request: CrawlRequest) -> CrawlResult:
         # in-process 합성 파이프라인(crawl→chunk→upsert). PoC 는 전부 fake 스토어로 격리
         # 실행하므로 외부 컨테이너·모델 없이 동작한다. 반환 ``CrawlResult`` 로 잡 카운트를 채운다.
-        result, _components = run_poc_ingestion(request, source)
+        has_runtime_atlassian_credentials = bool(
+            request.access_token or request.cloud_id or request.site_url or request.use_admin_key
+        )
+        source_for_job = (
+            None
+            if settings.source_type.lower() == "atlassian" and has_runtime_atlassian_credentials
+            else source
+        )
+        result, _components = run_poc_ingestion(request, source_for_job)
         return result.crawl
 
     def _run_delta(request: DeltaSyncRequest) -> DeltaSyncResult:

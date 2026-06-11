@@ -51,7 +51,27 @@ from app.schemas.page_object import PageObject
 if TYPE_CHECKING:
     from app.config import Settings
 
-EMPTY_RESTRICTION_POLICIES = frozenset({"mark_missing", "space_fallback", "allow_authenticated"})
+EMPTY_RESTRICTION_POLICIES = frozenset({"mark_missing", "allow_authenticated"})
+
+
+def normalize_webui_link(webui_link: str, site_url: str) -> str:
+    """Confluence ``_links.webui`` 상대경로를 ``site_url`` 기준 absolute URL 로 정규화한다.
+
+    api-spec v2.6.2 §2-5: ``siteUrl``은 콘텐츠 조회 REST 호출에는 쓰지 않고, 수집된
+    출처 링크를 absolute URL로 저장하기 위해 사용한다. 값이 비어 있으면 PoC/미주입 환경
+    호환을 위해 입력을 그대로 둔다.
+    """
+    link = webui_link.strip()
+    base = site_url.strip().rstrip("/")
+    if not link or not base:
+        return webui_link
+    if link.startswith(("http://", "https://")):
+        return link
+    if not link.startswith("/"):
+        link = f"/{link}"
+    if link.startswith("/wiki/"):
+        return f"{base}{link}"
+    return f"{base}/wiki{link}"
 
 
 class _WorkflowRunner(Protocol):
@@ -104,8 +124,6 @@ class ConfluenceRestrictionAclProvider:
             return allowed_groups, allowed_users
         if self.empty_restriction_policy == "allow_authenticated":
             return synthesize_authenticated_acl(self.public_acl_group)
-        if self.empty_restriction_policy == "space_fallback":
-            return synthesize_space_acl(space_key)
         return [], []
 
 
@@ -139,6 +157,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
         max_retries: int = 3,
         timeout_seconds: int = 20,
         use_admin_key: bool = False,
+        site_url: str = "",
+        admin_email: str = "",
+        admin_api_token: str = "",
     ) -> None:
         self._cloud_id = cloud_id
         self._access_token = access_token
@@ -149,6 +170,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
         self._max_retries = max_retries
         self._timeout_seconds = timeout_seconds
         self._use_admin_key = use_admin_key
+        self._site_url = site_url
+        self._admin_email = admin_email
+        self._admin_api_token = admin_api_token
 
     @classmethod
     def from_settings(cls, settings: Settings) -> AtlassianSourceAdapter:
@@ -163,6 +187,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
                 client=_default_confluence_client(
                     cloud_id=settings.atlassian_cloud_id,
                     access_token=settings.atlassian_access_token.get_secret_value(),
+                    site_url=settings.atlassian_site_url,
+                    admin_email=settings.atlassian_admin_email,
+                    admin_api_token=settings.atlassian_admin_api_token.get_secret_value(),
                     request_delay_seconds=settings.atlassian_request_delay_seconds,
                     max_retries=settings.atlassian_max_retries,
                     timeout_seconds=settings.atlassian_timeout_seconds,
@@ -177,14 +204,35 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
                 ),
                 public_acl_group=settings.atlassian_public_acl_group,
             )
+        access_token = settings.atlassian_access_token.get_secret_value()
+        if settings.atlassian_use_admin_key and not access_token:
+            access_token = _ADMIN_BASIC_AUTH_TOKEN_SENTINEL
         return cls(
             cloud_id=settings.atlassian_cloud_id,
-            access_token=settings.atlassian_access_token.get_secret_value(),
+            access_token=access_token,
+            client=(
+                _default_confluence_client(
+                    cloud_id=settings.atlassian_cloud_id,
+                    access_token=access_token,
+                    site_url=settings.atlassian_site_url,
+                    admin_email=settings.atlassian_admin_email,
+                    admin_api_token=settings.atlassian_admin_api_token.get_secret_value(),
+                    request_delay_seconds=settings.atlassian_request_delay_seconds,
+                    max_retries=settings.atlassian_max_retries,
+                    timeout_seconds=settings.atlassian_timeout_seconds,
+                    use_admin_key=True,
+                )
+                if settings.atlassian_use_admin_key
+                else None
+            ),
             acl_provider=acl_provider,
             request_delay_seconds=settings.atlassian_request_delay_seconds,
             max_retries=settings.atlassian_max_retries,
             timeout_seconds=settings.atlassian_timeout_seconds,
             use_admin_key=settings.atlassian_use_admin_key,
+            site_url=settings.atlassian_site_url,
+            admin_email=settings.atlassian_admin_email,
+            admin_api_token=settings.atlassian_admin_api_token.get_secret_value(),
         )
 
     # --- DocumentSourceAdapter 인터페이스 ---
@@ -244,6 +292,9 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
             max_retries=self._max_retries,
             timeout_seconds=self._timeout_seconds,
             use_admin_key=self._use_admin_key,
+            site_url=self._site_url,
+            admin_email=self._admin_email,
+            admin_api_token=self._admin_api_token,
         )
 
     def _to_page_object(self, document: Any) -> PageObject:
@@ -256,7 +307,7 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
             body.storage_html       → body_html  (청커가 HTML 파싱)
             page.version_number     → version_number
             page.last_modified_at   → last_modified (ISO 8601 파싱)
-            page.page_url           → webui_link
+            page.page_url           → webui_link (site_url 설정 시 absolute 정규화)
             restriction API         → allowed_groups/allowed_users (운영 후속)
             (현재 구현)             → allowed_groups/allowed_users (PoC 합성)
             (MVP 미산출)            → labels=[] / ancestors=[] / attachments=[]
@@ -274,24 +325,15 @@ class AtlassianSourceAdapter(DocumentSourceAdapter):
             last_modified=_parse_last_modified(document.page.last_modified_at),
             allowed_groups=allowed_groups,
             allowed_users=allowed_users,
-            webui_link=document.page.page_url,
+            webui_link=normalize_webui_link(document.page.page_url, self._site_url),
             labels=[],
             ancestors=[],
             attachments=[],
         )
 
-    def _synthesize_acl(self, space_key: str) -> tuple[list[str], list[str]]:
-        """PoC ACL 합성 — space_key 기반 그룹(JsonFixtureSourceAdapter 패턴 동일).
-
-        운영 ACL 연동 시 Admin Key + read restriction 조회 결과로 본 메서드를 교체한다.
-        page-level restriction 이 비어 있는 경우 상위 folder/page/space permission 처리 정책이
-        필요하다(docs/db-schema.md §1.4, ADR 0003).
-        """
-        return synthesize_space_acl(space_key)
-
     def _resolve_acl(self, *, page_id: str, space_key: str) -> tuple[list[str], list[str]]:
         if self._acl_provider is None:
-            return self._synthesize_acl(space_key)
+            return [], []
         return self._acl_provider.get_page_acl(page_id=page_id, space_key=space_key)
 
 
@@ -376,16 +418,6 @@ def _dedupe_non_empty(values: list[str]) -> list[str]:
     return deduped
 
 
-def synthesize_space_acl(space_key: str) -> tuple[list[str], list[str]]:
-    """PoC ACL 합성(space_key 기반) — Full Crawl·Delta Sync 어댑터가 공유한다.
-
-    에이전트 MVP 가 ACL 을 산출하지 않으므로 ``["space:{space_key}"]`` 그룹으로 합성한다.
-    운영 ACL 연동 결정 시 이 함수/호출부를 page-level ACL 수집으로 교체한다
-    (RAG 검색 ACL 필터와 공유 계약).
-    """
-    return [f"space:{space_key}"], []
-
-
 def synthesize_authenticated_acl(public_acl_group: str) -> tuple[list[str], list[str]]:
     """모든 인증 사용자에게 열린 페이지를 표현하는 sentinel ACL 을 합성한다."""
     token = public_acl_group.strip()
@@ -406,6 +438,9 @@ def _default_workflow_runner() -> _WorkflowRunner:
     return runner
 
 
+_ADMIN_BASIC_AUTH_TOKEN_SENTINEL = "unused-admin-basic-auth"
+
+
 def _default_confluence_client(
     *,
     cloud_id: str,
@@ -414,6 +449,9 @@ def _default_confluence_client(
     max_retries: int,
     timeout_seconds: int,
     use_admin_key: bool,
+    site_url: str = "",
+    admin_email: str = "",
+    admin_api_token: str = "",
 ) -> Any:
     from data_ingestion_agent.config import DataIngestionConfig
     from data_ingestion_agent.confluence import ConfluenceClient
@@ -426,6 +464,9 @@ def _default_confluence_client(
         max_retries=max_retries,
         timeout_seconds=timeout_seconds,
         use_admin_key=use_admin_key,
+        site_url=site_url,
+        admin_email=admin_email,
+        admin_api_token=admin_api_token,
     )
     return ConfluenceClient(config=config)
 

@@ -31,7 +31,7 @@
 
 - **ACL Pre-filtering을 우회하지 않는다.** Qdrant 검색 호출은 `@enforce_acl` 데코레이터를 통과해야 하며, ACL 필터가 없는 호출은 `ACLViolationError`로 거부한다.
 - ACL 필터링을 LLM 프롬프트에 위임하지 않는다 (Prompt Injection 우회 방지).
-- ACL 검색 필드 모델은 `allowed_groups`/`allowed_users` payload로 고정한다(`docs/db-schema.md` §1.4). PoC 수집은 `space:{space_key}` 그룹을 합성하지만, 운영 Confluence/Admin Key 수집은 read restriction API 결과를 `allowed_users`/`allowed_groups`로 채우는 방향이다. 어떤 수집 모델에서도 `@enforce_acl` 강제 원칙은 유지한다.
+- ACL 검색 필드 모델은 `allowed_groups`/`allowed_users` payload로 고정한다(`docs/db-schema.md` §1.4). 2026-06-11 결정 이후 ACL 값에 `space:{space_key}`를 합성하지 않는다. Fixture는 public sentinel `"*"`, 운영 Confluence/Admin Key 수집은 read restriction API 결과의 `allowed_users`/`allowed_groups`를 사용한다. 어떤 수집 모델에서도 `@enforce_acl` 강제 원칙은 유지한다.
 - 출처 없는 답변을 생성하는 방향으로 수정하지 않는다. 검색 결과 0건이면 LLM을 호출하지 않고 표준 분기 응답을 반환한다.
 - 답변 검증(1단계 규칙 + 2단계 LLM 평가자)을 우회하거나 비활성화하지 않는다.
 - ACL 정보가 전혀 없는 PageObject·청크는 색인하지 않는다 (`INVALID_ACL`).

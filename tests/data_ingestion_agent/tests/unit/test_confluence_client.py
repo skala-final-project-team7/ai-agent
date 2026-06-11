@@ -48,6 +48,9 @@ def _client(
         max_retries=max_retries,
         request_delay_seconds=0,
         use_admin_key=use_admin_key,
+        site_url="https://example.atlassian.net" if use_admin_key else "",
+        admin_email="admin@example.com" if use_admin_key else "",
+        admin_api_token="admin-api-token" if use_admin_key else "",
     )
     transport = FakeTransport(responses)
     return (
@@ -96,6 +99,8 @@ def test_admin_key_header_is_sent_when_enabled(tmp_path: Path) -> None:
 
     assert client.list_spaces() == []
     assert transport.requests[0].headers["Atl-Confluence-With-Admin-Key"] == "true"
+    assert transport.requests[0].headers["Authorization"].startswith("Basic ")
+    assert transport.requests[0].url.startswith("https://example.atlassian.net/wiki/api/v2")
 
 
 def test_admin_key_header_is_omitted_by_default(tmp_path: Path) -> None:
@@ -185,7 +190,7 @@ def test_get_page_read_restrictions_uses_content_restriction_endpoint(
     tmp_path: Path,
 ) -> None:
     page_id = _runtime_value("page")
-    client, transport, cloud_id, _ = _client(
+    client, transport, _cloud_id, _ = _client(
         tmp_path,
         [
             ConfluenceResponse(
@@ -200,8 +205,8 @@ def test_get_page_read_restrictions_uses_content_restriction_endpoint(
 
     assert restrictions["operation"] == "read"
     assert transport.requests[0].url == (
-        "https://api.atlassian.com/ex/confluence/"
-        f"{cloud_id}/wiki/rest/api/content/{page_id}/restriction/byOperation/read"
+        "https://example.atlassian.net"
+        f"/wiki/rest/api/content/{page_id}/restriction/byOperation/read"
     )
     assert transport.requests[0].headers["Atl-Confluence-With-Admin-Key"] == "true"
 

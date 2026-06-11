@@ -22,6 +22,8 @@
     로드 성공.
   - 2026-06-10, 회의록 ACL 정합화 — empty restriction 기본값을 ``mark_missing`` 으로
     변경해 inherited restriction 미해석 상태에서 과다 노출을 방지한다.
+  - 2026-06-11, api-spec v2.6.2 정합 — site URL을 출처 URL 정규화 필드로 유지하고,
+    admin API Token Basic 경로는 실측 검증 fallback으로 격리한다.
 --------------------------------------------------
 [호환성]
   - Python 3.11.x, Pydantic 2.7+, pydantic-settings 2.3+
@@ -56,10 +58,13 @@ class Settings(BaseSettings):
     atlassian_request_delay_seconds: float = 0.3
     atlassian_max_retries: int = 3
     atlassian_timeout_seconds: int = 20
-    # True면 Confluence API 요청에 Atl-Confluence-With-Admin-Key header를 포함한다.
-    # Admin Key 활성화/만료 자체는 backend/infra 운영 영역이며, 본 설정은 활성화된
-    # Admin Key를 사용하는 호출임을 명시하는 header만 제어한다.
+    # True면 Basic + site URL verification fallback을 사용한다. v2.6.2 정본 경로는
+    # gateway URL + OAuth Bearer + Atl-Confluence-With-Admin-Key header이며, site_url은
+    # 수집된 _links.webui를 absolute source URL로 정규화하는 데도 사용한다.
     atlassian_use_admin_key: bool = False
+    atlassian_site_url: str = ""
+    atlassian_admin_email: str = ""
+    atlassian_admin_api_token: SecretStr = SecretStr("")
     # Confluence read restriction 의 group 결과를 allowed_groups 로 변환할 때 사용할
     # 식별자 우선순위. BFF JWT groups claim 과 같은 문자열이어야 검색 ACL 이 매칭된다.
     atlassian_group_acl_field_order: str = "id,groupId,name"
@@ -68,7 +73,7 @@ class Settings(BaseSettings):
     # Page-level read restriction 이 비어 있을 때의 처리 정책.
     # mark_missing(기본): 빈 ACL 로 두어 색인 단계에서 INVALID_ACL 처리(fail-closed).
     # allow_authenticated(opt-in): public_acl_group sentinel 부여 → 모든 인증 사용자 허용.
-    # space_fallback: PoC/데모용으로 space:{space_key} ACL 합성.
+    # space_fallback은 2026-06-11 회의 결정으로 제거됨(ACL 값에 space key를 싣지 않음).
     atlassian_empty_restriction_policy: str = "mark_missing"
     # allow_authenticated 정책에서 부여할 "모든 인증 사용자" sentinel group 토큰.
     # RAG build_acl_filter의 PUBLIC_ACL_GROUP과 반드시 동일해야 한다.

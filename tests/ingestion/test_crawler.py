@@ -9,6 +9,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime
 
+import pytest
+
+import app.ingestion.crawler as crawler_module
 from app.adapters.base import ActiveIds, ChangeEvent, DocumentSourceAdapter
 from app.ingestion.crawler import CrawlRequest, run_full_crawl
 from app.ingestion.workers import QUEUE_ATTACHMENT, QUEUE_CHUNKING
@@ -111,6 +114,40 @@ def test_run_full_crawl_filters_by_requested_space_key() -> None:
     assert result.pages_collected == 1
     assert set(store.pages) == {"page-1"}
     assert len(publisher.messages) == 1
+
+
+def test_run_full_crawl_builds_adapter_from_runtime_oauth_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """adapter 미주입 운영 경로는 §2-5 OAuth credential로 per-job adapter를 만든다."""
+    captured_kwargs: dict[str, object] = {}
+
+    class _CapturingAtlassianSource(_FakeSource):
+        def __init__(self, **kwargs: object) -> None:
+            captured_kwargs.update(kwargs)
+            super().__init__([])
+
+    monkeypatch.setattr(crawler_module, "AtlassianSourceAdapter", _CapturingAtlassianSource)
+
+    result = run_full_crawl(
+        CrawlRequest(
+            access_token="admin-oauth-token-secret",
+            site_url="https://tenant.atlassian.net",
+            cloud_id="cloud-tenant-1",
+        ),
+        raw_store=FakeRawPageStore(),
+        publisher=FakeQueuePublisher(),
+    )
+
+    assert result.pages_collected == 0
+    assert captured_kwargs == {
+        "cloud_id": "cloud-tenant-1",
+        "access_token": "admin-oauth-token-secret",
+        "use_admin_key": False,
+        "site_url": "https://tenant.atlassian.net",
+        "admin_email": "",
+        "admin_api_token": "",
+    }
 
 
 def test_run_full_crawl_isolates_failed_page() -> None:

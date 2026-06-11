@@ -15,6 +15,7 @@ from __future__ import annotations
 --------------------------------------------------
 """
 
+import base64
 import json
 import time
 from dataclasses import dataclass, field
@@ -152,7 +153,10 @@ class ConfluenceClient:
         self.config = config
         self.transport = transport or UrllibConfluenceTransport()
         self.sleeper = sleeper
-        self.base_url = f"{CONFLUENCE_API_ORIGIN}/ex/confluence/{config.cloud_id}/wiki/api/v2"
+        if config.use_admin_key:
+            self.base_url = f"{config.site_url.rstrip('/')}/wiki/api/v2"
+        else:
+            self.base_url = f"{CONFLUENCE_API_ORIGIN}/ex/confluence/{config.cloud_id}/wiki/api/v2"
 
     def list_spaces(self) -> list[dict[str, Any]]:
         """접근 가능한 Confluence Space 목록을 pagination 처리해 반환한다."""
@@ -285,13 +289,17 @@ class ConfluenceClient:
         )
 
     def _headers(self) -> dict[str, str]:
-        headers = {
+        if self.config.use_admin_key:
+            raw = f"{self.config.admin_email}:{self.config.admin_api_token}".encode()
+            return {
+                "Accept": "application/json",
+                "Authorization": f"Basic {base64.b64encode(raw).decode('ascii')}",
+                "Atl-Confluence-With-Admin-Key": "true",
+            }
+        return {
             "Accept": "application/json",
             "Authorization": f"Bearer {self.config.access_token}",
         }
-        if self.config.use_admin_key:
-            headers["Atl-Confluence-With-Admin-Key"] = "true"
-        return headers
 
     def _build_url(
         self,
@@ -302,6 +310,13 @@ class ConfluenceClient:
             return path_or_url
 
         path_with_query = self._build_path_with_query(path_or_url, query or {})
+        if self.config.use_admin_key:
+            site_url = self.config.site_url.rstrip("/")
+            if path_with_query.startswith("/wiki/"):
+                return f"{site_url}{path_with_query}"
+            if path_with_query.startswith("/rest/api/"):
+                return f"{site_url}/wiki{path_with_query}"
+            return f"{self.base_url}{path_with_query}"
         if path_with_query.startswith("/wiki/api/v2/") or path_with_query.startswith(
             "/wiki/rest/api/"
         ):

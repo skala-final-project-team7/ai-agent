@@ -616,7 +616,8 @@ def test_samples_attachments_pdf_csv_through_adapter(tmp_path: Path) -> None:
     canonical samples/ 는 docx/xlsx만 가지므로(다른 테스트가 4건을 단언), PDF/CSV의
     어댑터 경유 통합은 tmp_path에 미니 confluence 픽스처(페이지 1건 + 실제 PDF/CSV 파일)를
     만들어 검증한다. fetch_pages → _map_attachments → chunk_attachment → 메타데이터
-    무결성(어댑터가 space_key로 합성한 ACL 상속·source_type·extracted_format)을 확인한다.
+    무결성(어댑터가 fixture 공개 sentinel로 합성한 ACL 상속·source_type·extracted_format)을
+    확인한다.
     canonical 데이터셋을 건드리지 않아 기존 테스트에 영향이 없다.
     """
     attachments_dir = tmp_path / "attachments"
@@ -680,8 +681,8 @@ def test_samples_attachments_pdf_csv_through_adapter(tmp_path: Path) -> None:
             assert meta.source_type is SourceType.ATTACHMENT
             assert meta.attachment_id == attachment.attachment_id
             assert meta.page_id == page_obj.page_id
-            # 어댑터가 space_key로 합성한 ACL을 청크가 상속
-            assert meta.allowed_groups == page_obj.allowed_groups == ["space:CLOUD"]
+            # 어댑터가 fixture 공개 sentinel로 합성한 ACL을 청크가 상속
+            assert meta.allowed_groups == page_obj.allowed_groups == ["*"]
             assert meta.token_count > 0
         formats_seen.add(chunks[0].metadata.extracted_format)
 

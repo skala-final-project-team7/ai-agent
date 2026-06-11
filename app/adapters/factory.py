@@ -46,13 +46,27 @@ def build_source_adapter(settings: Settings | None = None) -> DocumentSourceAdap
     if source_type == "json_fixture":
         return JsonFixtureSourceAdapter(samples_dir=resolved.samples_dir)
     if source_type == "atlassian":
-        # vendored Data Ingestion Agent 를 감싸는 어댑터(featureI-6). access_token/cloud_id
-        # 전달 경로는 미확정(TBD)이라 PoC 는 Settings placeholder(env 주입)를 사용한다.
+        # vendored Data Ingestion Agent 를 감싸는 어댑터(featureI-6). 운영 job 경로는
+        # adminUserId로 auth-server §2-5 lookup을 수행하고, Settings 값은 local/worker
+        # 기본값 또는 Basic verification fallback으로 사용한다.
         token = resolved.atlassian_access_token.get_secret_value()
-        if not resolved.atlassian_cloud_id or not token:
+        if not resolved.atlassian_cloud_id:
             raise MissingAtlassianCredentialsError(
-                "source_type='atlassian'에는 RAG_ATLASSIAN_CLOUD_ID / "
-                "RAG_ATLASSIAN_ACCESS_TOKEN 주입이 필요하다(전달 경로 확정 전 PoC placeholder)"
+                "source_type='atlassian'에는 RAG_ATLASSIAN_CLOUD_ID 주입이 필요하다"
+            )
+        if resolved.atlassian_use_admin_key:
+            if not (
+                resolved.atlassian_site_url
+                and resolved.atlassian_admin_email
+                and resolved.atlassian_admin_api_token.get_secret_value()
+            ):
+                raise MissingAtlassianCredentialsError(
+                    "RAG_ATLASSIAN_USE_ADMIN_KEY=true 에는 RAG_ATLASSIAN_SITE_URL / "
+                    "RAG_ATLASSIAN_ADMIN_EMAIL / RAG_ATLASSIAN_ADMIN_API_TOKEN 이 필요하다"
+                )
+        elif not token:
+            raise MissingAtlassianCredentialsError(
+                "source_type='atlassian' OAuth 경로에는 RAG_ATLASSIAN_ACCESS_TOKEN 주입이 필요하다"
             )
         from app.adapters.atlassian import AtlassianSourceAdapter
 

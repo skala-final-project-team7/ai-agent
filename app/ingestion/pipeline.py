@@ -75,7 +75,7 @@ class PocComponents:
 def run_ingestion_pipeline(
     request: CrawlRequest,
     *,
-    source: DocumentSourceAdapter,
+    source: DocumentSourceAdapter | None,
     raw_store: Any,
     publisher: FakeQueuePublisher,
     chunking_deps: ChunkingWorkerDeps,
@@ -85,7 +85,8 @@ def run_ingestion_pipeline(
 
     Args:
         request: Full Crawl 트리거 입력.
-        source: 공급원 어댑터(crawl 입력). ``raw_store`` 는 crawl 적재와 worker 조회가
+        source: 공급원 어댑터(crawl 입력). None이면 ``CrawlRequest`` 런타임 credential로
+            ``AtlassianSourceAdapter``를 생성한다. ``raw_store`` 는 crawl 적재와 worker 조회가
             **같은 인스턴스**여야 한다(메시지에는 page_id 만 싣고 본문은 raw_store 에서 로드).
         raw_store: crawl 적재 + worker 조회 공용 store(``chunking_deps.raw_store`` 와 동일 객체).
         publisher: ``FakeQueuePublisher`` — 발행된 ``content.chunking`` 메시지를 in-process drain.
@@ -170,7 +171,7 @@ def build_poc_components(
 
 def run_poc_ingestion(
     request: CrawlRequest,
-    source: DocumentSourceAdapter,
+    source: DocumentSourceAdapter | None,
     *,
     doc_type_resolver: Any | None = None,
     chunk_attachment_fn: ChunkAttachmentFn | None = None,

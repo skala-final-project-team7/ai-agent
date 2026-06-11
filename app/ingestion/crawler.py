@@ -62,6 +62,17 @@ class CrawlRequest:
     # Legacy PoC: BFF→Ingestion 직접 전달. 로그·메시지 페이로드에 남기지 않는다.
     access_token: str | None = None
     cloud_id: str | None = None
+    # api-spec v2.6.2: §2-5 lookup returns OAuth accessToken/cloudId plus siteUrl.
+    # siteUrl is used to normalize _links.webui into absolute source URLs. The admin
+    # email/API token fields remain only for the Basic/site URL verification fallback.
+    use_admin_key: bool = False
+    site_url: str | None = None
+    admin_email: str | None = None
+    admin_api_token: str | None = None
+
+    def has_runtime_credentials(self) -> bool:
+        """Return True when this job must build a per-request Confluence adapter."""
+        return self.use_admin_key or bool(self.access_token or self.cloud_id or self.site_url)
 
 
 @dataclass
@@ -114,7 +125,11 @@ def run_full_crawl(
     """
     source = adapter or AtlassianSourceAdapter(
         cloud_id=request.cloud_id or "",
-        access_token=request.access_token or "",
+        access_token=request.access_token or "unused-admin-basic-auth",
+        use_admin_key=request.use_admin_key,
+        site_url=request.site_url or "",
+        admin_email=request.admin_email or "",
+        admin_api_token=request.admin_api_token or "",
     )
     started = time.monotonic()
     result = CrawlResult(space_key=request.space_key)

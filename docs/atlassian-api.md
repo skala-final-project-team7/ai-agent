@@ -42,18 +42,29 @@ python scripts/smoke_confluence_basic.py --limit 250 --sample-page-id "<restrict
 - sample page의 일반 호출 HTTP status와 Admin Key 호출 HTTP status
 - `/rest/api/content/{pageId}/restriction/byOperation/read`의 user/group restriction 개수
 
-이 스크립트는 read-only 확인 도구다. Admin Key 발급/말소는 수행하지 않는다. 운영 경로에서는
-BFF/Auth Server가 OAuth access token과 Admin Key 수명주기를 관리하고, Data Ingestion Worker는
-`adminUserId`로 auth-server 내부 credential API를 호출해 admin OAuth access token과 `cloudId`를
-조회한다. RabbitMQ job/completion payload에는 credential set을 포함하지 않는다.
+이 스크립트는 read-only 확인 도구다. Admin Key 발급/말소는 수행하지 않는다. v2.6.2 운영
+경로에서는 BFF/Auth Server가 Admin Key 수명주기를 관리하고, Data Ingestion Worker는
+`adminUserId`로 auth-server 내부 credential API를 호출해 콘텐츠 조회용 `accessToken` +
+`cloudId`와 출처 URL 정규화용 `siteUrl`을 조회한다. Admin API Token은 auth-server가
+Admin Key activate/deactivate에만 내부 사용하며 Worker로 전달하지 않는다. RabbitMQ
+job/completion payload에는 credential set을 포함하지 않는다.
 
 실제 API Token 값은 문서·코드·커밋에 남기지 않는다. 회의/채팅/로그에 노출된 token은
 Atlassian에서 폐기하고 재발급한 뒤 환경변수로만 주입한다.
 
 ## 데이터 수집 API
 
-API URL 형식: `https://api.atlassian.com/ex/confluence/{cloudid}/rest/api/...`
-(`cloudid`는 `AUTH-04 accessible-resources` 응답의 `id`)
+정본 수집 경로 URL 형식: `https://api.atlassian.com/ex/confluence/{cloudid}/...`
+(`cloudid`는 `AUTH-04 accessible-resources` 응답의 `id`). v2.6.2 기준 Data Ingestion
+Worker는 이 gateway URL에 `Authorization: Bearer {accessToken}`와
+`Atl-Confluence-With-Admin-Key: true`를 함께 사용한다. `siteUrl`은 본문 조회 REST 호출에
+쓰지 않고, Confluence `_links.webui` 상대경로를 화면에서 열 수 있는 absolute source URL로
+정규화하는 데 쓴다.
+
+단, OAuth Bearer + Admin Key header 조합은 실제 tenant 통합 smoke의 검증 게이트가 남아 있다.
+그 전까지 실측 완료된 Basic + site URL 경로(`{siteUrl}/wiki/api/v2`,
+`{siteUrl}/wiki/rest/api/...`, `Authorization: Basic base64(adminEmail:adminApiToken)`)는
+`RAG_ATLASSIAN_USE_ADMIN_KEY=true` fallback으로 유지한다.
 
 ### DATA-01. 페이지 목록 조회 (Full Crawl)
 
@@ -74,7 +85,7 @@ API URL 형식: `https://api.atlassian.com/ex/confluence/{cloudid}/rest/api/...`
 `GET /space?start={n}&limit={≤500}`
 
 로그인 사용자가 **접근 가능한 Space만** 반환된다(Confluence 권한 자동 적용).
-PoC 단계의 스페이스 단위 ACL 합성(`space:{space_key}`)에 사용한다.
+space key는 표시/메타데이터 필드로만 사용하고 ACL 값으로 합성하지 않는다.
 
 ### DATA-04. Page read restriction 조회 (운영 ACL)
 
@@ -87,8 +98,12 @@ Admin Key 테스트(2026-06-02)로 확인한 page-level read restriction 조회 
 Admin Key 사용 시 요청 header:
 
 ```text
+Authorization: Bearer {accessToken}
 Atl-Confluence-With-Admin-Key: true
 ```
+
+Basic verification fallback에서는 `Authorization: Basic base64(adminEmail:adminApiToken)`를
+사용한다.
 
 응답 요약 형태:
 
@@ -132,7 +147,7 @@ Atl-Confluence-With-Admin-Key: true
 | `space.key` | `space_key` | |
 | `metadata.labels.results[].name` | `labels[]` | |
 | `ancestors[].{id,title}` | `ancestors[]` | |
-| `_links.webui` | `webui_link` | 출처 카드 원본 링크 |
+| `_links.webui` | `webui_link` | 출처 카드 원본 링크. `/wiki/...` 상대경로이면 §2-5 `siteUrl`(`https://{site}.atlassian.net`)과 조합해 absolute URL로 저장 |
 | `attachments[]` | `attachments[]` | 샘플 데이터에 메타만 존재 — 실제 다운로드/추출은 별도 |
 | `restriction/byOperation/read.restrictions.group.results[]` | `allowed_groups[]` | 운영 ACL. 기본 우선순위 `id,groupId,name`; BFF `groups`(`groupId[]`)와 동일 vocabulary 필요. PoC는 `["space:{space_key}"]` 합성 |
 | `restriction/byOperation/read.restrictions.user.results[].accountId` | `allowed_users[]` | 운영 ACL. BFF `userId`(Confluence accountId)와 동일 vocabulary. PoC는 빈 배열 |
@@ -163,8 +178,8 @@ Atl-Confluence-With-Admin-Key: true
   해석하기 전까지 공개 페이지로 단정하지 않고, 빈 ACL을 색인 단계에서 `INVALID_ACL`로
   차단한다(fail-closed). 공개 페이지로 의도적으로 취급하려면 `allow_authenticated`를 opt-in으로
   설정해 `allowed_groups=[RAG_ATLASSIAN_PUBLIC_ACL_GROUP]`(기본 `"*"`)를 부여한다. RAG 검색은
-  동일 sentinel을 모든 principal의 group 조건에 주입한다. PoC/데모에서 스페이스 단위 접근을
-  허용하려면 `space_fallback`으로 바꿔 `allowed_groups=["space:{space_key}"]`를 합성할 수 있다.
+  동일 sentinel을 모든 principal의 group 조건에 주입한다. `space_fallback` 정책은
+  2026-06-11 회의 결정으로 제거되어 운영 ACL 값에 `space:{space_key}`를 합성하지 않는다.
 - **미결:** 상위 folder/page restriction 또는 space permission을 실제로 추가 조회해 ACL을
   계산하는 운영 강화 로직은 별도 endpoint 명세와 BE/infra 협의 후 구현한다.
 

@@ -26,6 +26,7 @@ def test_completion_event_payload_excludes_confluence_credentials() -> None:
     payload = event.to_payload()
 
     assert payload == {
+        "eventType": "INGEST_COMPLETED",
         "jobId": "job-1",
         "adminUserId": "712020:admin",
         "mode": "full",
@@ -58,6 +59,7 @@ def test_queue_completion_publisher_uses_routing_key() -> None:
     assert len(queue.messages) == 1
     published = queue.messages[0]
     assert published.routing_key == "ingestion.completed"
+    assert published.body["eventType"] == "INGEST_FAILED"
     assert published.body["jobId"] == "job-1"
     assert published.body["adminUserId"] == "712020:admin"
     assert published.body["status"] == "FAILED"

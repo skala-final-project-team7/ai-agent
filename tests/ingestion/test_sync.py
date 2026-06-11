@@ -94,7 +94,8 @@ def test_run_delta_sync_reingests_changed_pages_and_collects_deletes() -> None:
     assert page.space_key == "ENG"
     assert page.body_html == "<p>page-1</p>"
     assert page.version_number == 4
-    assert page.allowed_groups == ["space:ENG"]
+    assert page.allowed_groups == []
+    assert page.is_acl_missing is True
 
     assert [m.routing_key for m in publisher.messages] == [QUEUE_CHUNKING]
     assert publisher.messages[0].body == {
@@ -103,6 +104,28 @@ def test_run_delta_sync_reingests_changed_pages_and_collects_deletes() -> None:
         "version_number": 4,
         "source_type": "page",
     }
+
+
+def test_run_delta_sync_normalizes_webui_link_when_site_url_set() -> None:
+    store = FakeRawPageStore()
+    publisher = FakeQueuePublisher()
+    runner = _fake_runner(changed=[_changed("page-1")], deleted=[], failed=[])
+    request = DeltaSyncRequest(
+        previous_snapshot_path="/tmp/previous_snapshot.json",
+        cloud_id="cloud-synthetic",
+        access_token="token-synthetic",
+        site_url="https://tenant.atlassian.net",
+    )
+
+    result = run_delta_sync(
+        request,
+        raw_store=store,
+        publisher=publisher,
+        workflow_runner=runner,
+    )
+
+    assert result.changed_pages == 1
+    assert store.pages["page-1"].webui_link == "https://tenant.atlassian.net/wiki/page-1"
 
 
 def test_run_delta_sync_filters_by_requested_space_key() -> None:
