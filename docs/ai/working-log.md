@@ -19,6 +19,232 @@ RAG Pipeline 작업 이력을 시간순으로 기록한다.
 
 ---
 
+## 2026-06-11 — api-spec v2.6.2 siteUrl/source URL 정합화
+
+- 브랜치: `main` 기준 후속 작업(사용자 요청: ai-agent 범위만 수정, 타 레포 직접 작업 금지)
+- 작업 배경:
+  - Backend/Ingestion/RAG 최신 합의로 `site_url`은 하나로 통합됐다. auth-server DB 컬럼은
+    `admin_atlassian_credential.site_url`, JSON 응답 필드는 `siteUrl`이다.
+  - auth-server §2-5 credential 조회 응답은 `{accessToken, cloudId, siteUrl, expiresAt}`로
+    확정됐다. `adminEmail`/`adminApiToken`은 auth-server의 Admin Key activate/deactivate
+    내부 용도이며 Data Ingestion Worker로 전달하지 않는다.
+  - Confluence 본문/permission 조회는 `cloudId` gateway URL +
+    `Authorization: Bearer {accessToken}` + `Atl-Confluence-With-Admin-Key: true`가 정본이다.
+    단, 이 경로는 실제 tenant 검증 게이트가 남아 있어 Basic + site URL 경로는 fallback으로
+    유지한다.
+  - `siteUrl`은 본문 조회 REST 호출용이 아니라, Confluence `_links.webui` 상대경로를
+    프론트가 바로 열 수 있는 absolute source URL로 정규화하는 데 필요하다.
+- API 명세 반영:
+  - `/Users/younghoonlee/Downloads/api-spec.md`를 확인한 결과 v2.6.2 정본 계약과 일치했다.
+  - `docs/api-spec.md`는 해당 파일을 그대로 복사해 교체했다.
+  - 다운로드 명세 파일에는 별도 수정을 하지 않았다. 수정 불필요 판단 사유는 §2-5 응답,
+    `siteUrl` 용도, ML 검증 게이트 단서가 모두 최신 합의와 맞았기 때문이다.
+- 변경 사항:
+  - `app/ingestion/credentials.py`
+    - `AdminConfluenceCredential`를 `access_token`/`cloud_id`/`site_url`/`expires_at` 모델로
+      정정했다.
+    - 필수값 검증도 `adminEmail/adminApiToken`에서 `accessToken/cloudId/siteUrl` 기준으로 변경했다.
+  - `app/api/ingest_routes.py`
+    - `adminUserId` resolver 결과를 full/delta request에 `access_token`, `cloud_id`,
+      `site_url`로 주입하도록 수정했다.
+    - resolver 주입 경로에서 `use_admin_key=True`와 `admin_email/admin_api_token` 주입을 제거했다.
+  - `app/adapters/atlassian.py`
+    - `normalize_webui_link()`를 추가했다.
+    - `_links.webui`가 `/wiki/...` 또는 `spaces/...` 형태이면 `siteUrl` 기준 absolute URL로
+      저장하고, 이미 absolute URL이면 그대로 보존한다.
+  - `app/ingestion/sync.py`
+    - delta changed document 변환에서도 full crawl과 동일한 URL 정규화를 적용했다.
+  - `app/api/ingest_deps.py`
+    - atlassian runtime credential이 있는 job에서는 startup source adapter를 재사용하지 않고
+      per-job adapter를 만들도록 했다.
+  - 문서
+    - `docs/atlassian-api.md`, `docs/db-schema.md`, `app/adapters/__init__.py`,
+      `app/config.py`의 설명을 v2.6.2 기준으로 정정했다.
+- 수정 파일:
+  - `app/ingestion/credentials.py`
+  - `app/api/ingest_routes.py`
+  - `app/api/ingest_deps.py`
+  - `app/adapters/atlassian.py`
+  - `app/adapters/__init__.py`
+  - `app/adapters/factory.py`
+  - `app/config.py`
+  - `app/ingestion/crawler.py`
+  - `app/ingestion/sync.py`
+  - `tests/api/test_ingest_route.py`
+  - `tests/adapters/test_atlassian.py`
+  - `tests/ingestion/test_crawler.py`
+  - `tests/ingestion/test_sync.py`
+  - `docs/api-spec.md`
+  - `docs/atlassian-api.md`
+  - `docs/db-schema.md`
+  - `docs/ai/working-log.md`
+- 실행 명령 / 테스트 결과:
+  - `./.venv/bin/python -m pytest tests/api/test_ingest_route.py tests/adapters/test_atlassian.py tests/ingestion/test_sync.py tests/ingestion/test_crawler.py tests/scripts/test_smoke_ingest_api.py`
+    - 결과: `53 passed, 6 warnings in 1.32s`.
+  - `./.venv/bin/ruff check app tests/api/test_ingest_route.py tests/adapters/test_atlassian.py tests/ingestion/test_sync.py tests/ingestion/test_crawler.py tests/scripts/test_smoke_ingest_api.py`
+    - 결과: `All checks passed!`.
+  - `./.venv/bin/python -m pytest`
+    - 결과: `1031 passed, 7 warnings in 5.74s`.
+    - warning: 기존 LangGraph/Qdrant local/SWIG deprecation 경고이며 실패 없음.
+  - `python3.11 -m compileall app`
+    - 결과: 통과.
+  - `git diff --check`
+    - 결과: 공백 오류 없음.
+- 타팀 전달 필요:
+  - 인프라: `RAG_ATLASSIAN_SITE_URL`이 없으면 신규 색인 source URL이 absolute로 저장되지 않는다.
+  - Ingestion/RAG: 기존 Qdrant 색인에는 상대경로가 남아 있으므로 full ingest 재색인 1회 필요.
+  - Backend/Auth: §2-5는 `accessToken/cloudId/siteUrl/expiresAt`를 반환하고,
+    `adminEmail/adminApiToken`은 auth-server 내부 Admin Key 관리에만 사용해야 한다.
+- 남은 TODO:
+  - OAuth Bearer + `Atl-Confluence-With-Admin-Key: true` 본문/permission 조회가 실제 tenant에서
+    동작하는지 통합 smoke에서 검증.
+  - 검증 게이트 통과 후 Basic + site URL fallback 제거 여부를 팀과 결정.
+
+---
+
+## 2026-06-11 — auth-server credential lookup siteUrl 주입 seam 추가
+
+- 브랜치: `main` 기준 후속 작업(사용자 요청: ai-agent 범위만 수정, 타 레포 직접 작업 금지)
+- 작업 배경:
+  - BFF/auth-server 담당자 회신으로 §2-5 credential 조회 응답에 `siteUrl`을 포함하고 DB 테이블도
+    추가하는 방향이 확정됐다.
+  - ai-agent는 `/ml/ingest` public/queue payload에 credential을 싣지 않고 `adminUserId`만 받은 뒤,
+    내부 worker 경계에서 auth-server 조회 결과를 full/delta request에 주입해야 한다.
+  - 기존 `build_ingest_deps`는 startup source adapter를 1회 생성해 재사용하므로, tenant별
+    `siteUrl`/admin credential을 job 단위로 반영할 seam이 필요했다.
+- 변경 사항:
+  - `app/ingestion/credentials.py`
+    - `AdminConfluenceCredential(admin_email, admin_api_token, cloud_id, site_url)` 값 객체 추가.
+    - 비어 있는 필수 필드는 생성 시 실패하도록 검증.
+    - `CredentialResolver = Callable[[str], AdminConfluenceCredential]` seam 정의.
+  - `app/api/ingest_deps.py`
+    - `IngestDeps.credential_resolver` optional 필드 추가.
+    - `CrawlRequest`에 runtime credential이 있으면 startup adapter 대신 per-job adapter 생성 경로를 사용.
+  - `app/api/ingest_routes.py`
+    - background job 실행 내부에서 `adminUserId`로 credential resolver를 호출.
+    - full crawl과 delta sync 양쪽 request에 `use_admin_key=True`, `site_url`, `admin_email`,
+      `admin_api_token`, `cloud_id`를 주입.
+    - resolver 실패는 기존 job 실패 처리 흐름으로 들어가 `FAILED` 상태와 completion event로 기록.
+  - `app/ingestion/crawler.py` / `app/ingestion/pipeline.py`
+    - full crawl request에 admin-key runtime credential 필드 추가.
+    - adapter 미주입 시 request credential로 `AtlassianSourceAdapter`를 per-job 생성.
+  - 문서
+    - `docs/api-spec.md`, `docs/atlassian-api.md`, `app/adapters/__init__.py`의 credential 설명을
+      `adminEmail + adminApiToken + cloudId + siteUrl` 모델로 정합화.
+- 수정 파일:
+  - `app/ingestion/credentials.py`
+  - `app/ingestion/crawler.py`
+  - `app/ingestion/pipeline.py`
+  - `app/api/ingest_deps.py`
+  - `app/api/ingest_routes.py`
+  - `app/adapters/__init__.py`
+  - `tests/api/test_ingest_route.py`
+  - `tests/ingestion/test_crawler.py`
+  - `docs/api-spec.md`
+  - `docs/atlassian-api.md`
+  - `docs/ai/working-log.md`
+- 실행 명령 / 테스트 결과:
+  - `./.venv/bin/python -m pytest tests/api/test_ingest_route.py tests/ingestion/test_crawler.py tests/ingestion/test_sync.py tests/api/test_ingest_completion.py`
+    - 결과: `31 passed, 6 warnings in 0.78s`.
+  - `./.venv/bin/ruff check app tests/api/test_ingest_route.py tests/ingestion/test_crawler.py tests/ingestion/test_sync.py tests/api/test_ingest_completion.py`
+    - 결과: `All checks passed!`.
+  - `./.venv/bin/python -m pytest tests/scripts/test_smoke_ingest_api.py tests/api/test_ingest_route.py tests/ingestion/test_crawler.py`
+    - 결과: `24 passed, 6 warnings in 0.94s`.
+  - `./.venv/bin/python -m pytest`
+    - 결과: `1028 passed, 7 warnings in 4.89s`.
+  - `python3.11 -m compileall app`
+    - 결과: 통과.
+  - `git diff --check`
+    - 결과: 공백 오류 없음.
+- 타팀 전달 필요:
+  - 현재 ai-agent는 resolver seam만 추가했다. auth-server/BFF 쪽 실제 구현은 내부 credential
+    lookup client를 이 seam 뒤에 붙이면 된다.
+  - 응답에는 반드시 `adminEmail`, `adminApiToken`, `cloudId`, `siteUrl` 네 필드가 모두 필요하다.
+- 남은 TODO:
+  - auth-server 내부 API endpoint/인증 방식이 최종 확정되면 실제 HTTP resolver 구현 추가.
+  - 통합 smoke에서 tenant별 `siteUrl`로 Basic + Admin Key header 수집이 동작하는지 확인.
+
+---
+
+## 2026-06-11 — api-spec v2.6.1 admin-key credential 모델 반영
+
+- 브랜치: `main` 기준 후속 작업(사용자 요청: ai-agent 범위만 수정, 타 레포 직접 작업 금지)
+- 작업 배경:
+  - ingestion/rag 담당자 공유 메시지에서 deploy 레포가 v2.6.1로 갱신됨.
+  - 핵심 결정은 admin-key 적용 수집 호출이 OAuth Bearer + gateway가 아니라
+    admin API Token Basic 인증 + site URL을 사용한다는 점이다.
+  - deploy 쪽은 vendor 무수정 override로 임시 대응했으며, ai-agent 네이티브 반영 시
+    deploy override 제거가 가능하다고 요청했다.
+- 변경 사항:
+  - `data_ingestion_agent.config.DataIngestionConfig`
+    - `site_url`, `admin_email`, `admin_api_token` 필드 추가.
+    - `use_admin_key=True`이면 세 필드를 필수 검증하고 safe dict에서 token redaction.
+  - `data_ingestion_agent.confluence.ConfluenceClient`
+    - 기본 OAuth 경로는 기존 gateway URL 유지.
+    - `use_admin_key=True`이면 `{siteUrl}/wiki/api/v2` base URL,
+      `Authorization: Basic ...`, `Atl-Confluence-With-Admin-Key: true`를 사용.
+    - `/rest/api/...`도 `{siteUrl}/wiki/rest/api/...`로 라우팅.
+  - `data_sync_agent.config.DataSyncConfig` / `data_sync_agent.confluence.ConfluenceMetadataClient`
+    - delta sync도 동일한 Basic + site URL admin-key 경로를 native 지원.
+  - `app.config.Settings`
+    - 신규 env `RAG_ATLASSIAN_SITE_URL`, `RAG_ATLASSIAN_ADMIN_EMAIL`,
+      `RAG_ATLASSIAN_ADMIN_API_TOKEN` 추가.
+  - `app/adapters/atlassian.py`
+    - `RAG_ATLASSIAN_USE_ADMIN_KEY=true`일 때 native Basic/site URL client를 crawl과
+      restriction provider 양쪽에 주입.
+    - `space_fallback` 정책과 `synthesize_space_acl` 제거. provider 부재 시 빈 ACL로
+      fail-closed.
+  - `app/adapters/json_fixture.py`
+    - fixture ACL을 `space:{key}` 합성에서 public sentinel `["*"]`로 전환.
+  - `app/ingestion/sync.py`
+    - delta changed page 변환에서 space-key ACL 합성 제거. provider 없는 변경분은 빈 ACL.
+    - internal runner가 auth-server 조회 후 채울 수 있도록 admin-key 필드 추가.
+  - `app/api/ingest_routes.py` / `app/storage/ingest_jobs.py`
+    - BFF 제공 `jobId` 수용 및 같은 `jobId` 재요청 idempotent 상태 반환.
+  - `app/api/ingest_completion.py`
+    - completion event payload에 `eventType`(`INGEST_COMPLETED`/`INGEST_FAILED`) 추가.
+  - CLI
+    - Data Ingestion/Data Sync CLI에 `--use-admin-key`, `--site-url`, `--admin-email`,
+      `--admin-api-token` optional 인자 추가.
+- 수정 파일:
+  - `app/config.py`
+  - `app/adapters/atlassian.py`
+  - `app/adapters/factory.py`
+  - `app/adapters/json_fixture.py`
+  - `app/api/ingest_completion.py`
+  - `app/api/ingest_routes.py`
+  - `app/ingestion/sync.py`
+  - `app/storage/ingest_jobs.py`
+  - `data_ingestion_agent/config/settings.py`
+  - `data_ingestion_agent/confluence/client.py`
+  - `data_ingestion_agent/app/cli.py`
+  - `data_sync_agent/config/settings.py`
+  - `data_sync_agent/confluence/client.py`
+  - `data_sync_agent/scripts/run_delta_sync.py`
+  - 관련 테스트와 `docs/api-spec.md`, `docs/db-schema.md`, `docs/atlassian-api.md`
+- 실행 명령 / 테스트 결과:
+  - `python3.11 -m compileall app data_ingestion_agent data_sync_agent`
+    - 결과: 통과.
+  - `./.venv/bin/python -m pytest`
+    - 결과: `1025 passed, 7 warnings in 5.12s`.
+    - warning: 기존 LangGraph/Qdrant local/SWIG deprecation 경고이며 실패 없음.
+  - `./.venv/bin/ruff check app tests/adapters/test_atlassian.py tests/adapters/test_json_fixture.py tests/ingestion/test_sync.py tests/ingestion/chunker/test_attachment.py tests/api/test_ingest_completion.py tests/api/test_ingest_route.py tests/test_config.py`
+    - 결과: `All checks passed!`.
+    - 참고: `data_ingestion_agent`/`data_sync_agent`는 `pyproject.toml`의 ruff `extend-exclude`
+      대상이므로 compileall + 전용 pytest로 검증했다.
+  - `git diff --check`
+    - 결과: 공백 오류 없음.
+- 타팀 전달 필요:
+  - `ingestion-deploy/INTEGRATION.md`에는 아직 “BFF가 accessToken/cloudId 전달(v2.5.0)” 잔재가
+    보인다. 정본 `rag-deploy/docs/api-spec.md` v2.6.1과 맞게 `adminEmail/adminApiToken/cloudId`
+    조회 모델로 정리 필요.
+  - auth-server §2-5 응답의 `siteUrl` 포함은 2026-06-11 후속 회신으로 확정됐다.
+- 남은 TODO:
+  - 실제 Confluence tenant에서 Basic + site URL + Admin Key header로 pages/spaces/restrictions
+    전체가 동작하는지 통합 smoke에서 확인.
+  - auth-server credential 조회와 worker 주입이 붙으면 HTTP payload의 legacy `accessToken`/
+    `cloudId` 필드 제거 여부를 재검토.
+
 ## 2026-06-10 — api-spec v2.6.0 ACL 문서 정합화
 
 - 브랜치: `main` 기준 후속 작업(사용자 요청: ai-agent 관점 후속 진행)

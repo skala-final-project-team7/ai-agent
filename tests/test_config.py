@@ -71,6 +71,9 @@ def test_settings_use_real_adapters_env_override(monkeypatch: pytest.MonkeyPatch
 
 def test_atlassian_acl_mapping_settings_defaults() -> None:
     settings = _settings_without_env_file()
+    assert settings.atlassian_site_url == ""
+    assert settings.atlassian_admin_email == ""
+    assert settings.atlassian_admin_api_token.get_secret_value() == ""
     assert settings.atlassian_group_acl_field_order == "id,groupId,name"
     assert settings.atlassian_group_acl_prefix == ""
     assert settings.atlassian_empty_restriction_policy == "mark_missing"
@@ -80,12 +83,18 @@ def test_atlassian_acl_mapping_settings_defaults() -> None:
 def test_atlassian_acl_mapping_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAG_ATLASSIAN_GROUP_ACL_FIELD_ORDER", "name,id")
     monkeypatch.setenv("RAG_ATLASSIAN_GROUP_ACL_PREFIX", "confluence-group:")
-    monkeypatch.setenv("RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY", "space_fallback")
+    monkeypatch.setenv("RAG_ATLASSIAN_EMPTY_RESTRICTION_POLICY", "allow_authenticated")
     monkeypatch.setenv("RAG_ATLASSIAN_PUBLIC_ACL_GROUP", "public")
+    monkeypatch.setenv("RAG_ATLASSIAN_SITE_URL", "https://example.atlassian.net")
+    monkeypatch.setenv("RAG_ATLASSIAN_ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setenv("RAG_ATLASSIAN_ADMIN_API_TOKEN", "admin-secret")
     settings = Settings(_env_file=None)  # type: ignore[arg-type]
+    assert settings.atlassian_site_url == "https://example.atlassian.net"
+    assert settings.atlassian_admin_email == "admin@example.com"
+    assert settings.atlassian_admin_api_token.get_secret_value() == "admin-secret"
     assert settings.atlassian_group_acl_field_order == "name,id"
     assert settings.atlassian_group_acl_prefix == "confluence-group:"
-    assert settings.atlassian_empty_restriction_policy == "space_fallback"
+    assert settings.atlassian_empty_restriction_policy == "allow_authenticated"
     assert settings.atlassian_public_acl_group == "public"
 
 

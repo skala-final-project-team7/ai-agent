@@ -36,7 +36,11 @@ class IngestCompletionEvent:
 
     def to_payload(self) -> dict[str, object]:
         completed_at = self.completed_at or datetime.now(UTC)
+        event_type = "INGEST_COMPLETED"
+        if self.status is IngestJobStatus.FAILED:
+            event_type = "INGEST_FAILED"
         return {
+            "eventType": event_type,
             "jobId": self.job_id,
             "adminUserId": self.admin_user_id,
             "mode": self.mode,

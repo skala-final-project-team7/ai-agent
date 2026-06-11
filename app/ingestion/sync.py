@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
-from app.adapters.atlassian import synthesize_space_acl
+from app.adapters.atlassian import normalize_webui_link
 from app.adapters.base import DocumentSourceAdapter
 from app.adapters.json_fixture import parse_atlassian_datetime
 from app.ingestion.crawler import build_chunking_message
@@ -136,6 +136,12 @@ class DeltaSyncRequest:
     # Legacy PoC: BFF→Ingestion 직접 전달. 로그·메시지 페이로드에 남기지 않는다.
     access_token: str | None = None
     cloud_id: str | None = None
+    # api-spec v2.6.2: lookup returns accessToken/cloudId/siteUrl. adminEmail/adminApiToken
+    # are kept only for the Basic/site URL verification fallback, not public job payloads.
+    use_admin_key: bool = False
+    site_url: str | None = None
+    admin_email: str | None = None
+    admin_api_token: str | None = None
 
 
 @dataclass
@@ -235,7 +241,7 @@ def run_delta_sync(
     for changed in result.changed_documents:
         if request.space_key and changed.space.get("space_key") != request.space_key:
             continue
-        page = _changed_document_to_page_object(changed)
+        page = _changed_document_to_page_object(changed, site_url=request.site_url or "")
         raw_store.save_page(page)
         publisher.publish(routing_key=QUEUE_CHUNKING, message=build_chunking_message(page))
         out.changed_pages += 1
@@ -286,6 +292,10 @@ def _build_sync_config(request: DeltaSyncRequest, *, output_dir: str) -> Any:
         access_token=request.access_token or "",
         output_dir=output_dir,
         previous_snapshot=request.previous_snapshot_path,
+        use_admin_key=request.use_admin_key,
+        site_url=request.site_url or "",
+        admin_email=request.admin_email or "",
+        admin_api_token=request.admin_api_token or "",
     )
 
 
@@ -297,16 +307,17 @@ def _default_delta_workflow_runner() -> _DeltaSyncWorkflowRunner:
     return runner
 
 
-def _changed_document_to_page_object(changed: Any) -> PageObject:
+def _changed_document_to_page_object(changed: Any, *, site_url: str = "") -> PageObject:
     """vendored ChangedDocument(dict 기반 space/page/body) → 표준 PageObject 변환.
 
-    Full Crawl 어댑터와 동일 매핑·동일 PoC ACL 합성을 사용한다(공급원 무관 표준 계약).
+    Full Crawl 어댑터와 동일하게 space-key ACL 합성을 하지 않는다. ACL provider가 없는
+    delta 변경 문서는 빈 ACL로 fail-closed 처리되어 색인 단계에서 제외된다. ``site_url`` 이
+    있으면 full crawl 과 동일하게 ``webui_link`` 를 absolute URL 로 정규화한다.
     """
     space = changed.space
     page = changed.page
     body = changed.body
     space_key = str(space.get("space_key") or "")
-    allowed_groups, allowed_users = synthesize_space_acl(space_key)
     return PageObject(
         page_id=str(page["page_id"]),
         space_key=space_key,
@@ -314,9 +325,9 @@ def _changed_document_to_page_object(changed: Any) -> PageObject:
         body_html=str(body.get("storage_html") or ""),
         version_number=int(page.get("version_number") or 0),
         last_modified=_parse_changed_last_modified(str(page.get("last_modified_at") or "")),
-        allowed_groups=allowed_groups,
-        allowed_users=allowed_users,
-        webui_link=str(page.get("page_url") or ""),
+        allowed_groups=[],
+        allowed_users=[],
+        webui_link=normalize_webui_link(str(page.get("page_url") or ""), site_url),
         labels=[],
         ancestors=[],
         attachments=[],

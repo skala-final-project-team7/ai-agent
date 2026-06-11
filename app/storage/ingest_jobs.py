@@ -54,7 +54,7 @@ class IngestJobStore(ABC):
     """수집 잡 수명주기 저장소 인터페이스 — 라우트·백그라운드 태스크가 공유한다."""
 
     @abstractmethod
-    def create(self) -> IngestJobRecord:
+    def create(self, job_id: str | None = None) -> IngestJobRecord:
         """``STARTED`` 상태의 새 잡을 생성하고 고유 ``job_id`` 를 부여해 반환한다."""
 
     @abstractmethod
@@ -78,10 +78,10 @@ class InMemoryIngestJobStore(IngestJobStore):
         self._jobs: dict[str, IngestJobRecord] = {}
         self._lock = threading.Lock()
 
-    def create(self) -> IngestJobRecord:
+    def create(self, job_id: str | None = None) -> IngestJobRecord:
         with self._lock:
             record = IngestJobRecord(
-                job_id=f"job-{uuid.uuid4()}",
+                job_id=job_id or f"job-{uuid.uuid4()}",
                 status=IngestJobStatus.STARTED,
                 started_at=datetime.now(UTC),
             )
@@ -131,9 +131,9 @@ class MongoIngestJobStore(IngestJobStore):
             collection_name=settings.ingest_job_status_collection,
         )
 
-    def create(self) -> IngestJobRecord:
+    def create(self, job_id: str | None = None) -> IngestJobRecord:
         record = IngestJobRecord(
-            job_id=f"job-{uuid.uuid4()}",
+            job_id=job_id or f"job-{uuid.uuid4()}",
             status=IngestJobStatus.STARTED,
             started_at=datetime.now(UTC),
         )

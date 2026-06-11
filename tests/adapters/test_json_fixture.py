@@ -89,10 +89,10 @@ def test_map_page_field_mapping() -> None:
 
 
 def test_map_page_synthesizes_acl() -> None:
-    # 샘플 데이터엔 ACL 필드가 없음 → PoC 합성 (space_key 기반). is_acl_missing False
+    # 샘플 데이터엔 ACL 필드가 없음 → 공개 sentinel. space_key는 ACL 값에 싣지 않는다.
     adapter = JsonFixtureSourceAdapter(samples_dir=SAMPLES_DIR)
     page = adapter._map_page(_RAW_PAGE)
-    assert page.allowed_groups  # 비어 있지 않음
+    assert page.allowed_groups == ["*"]
     assert page.is_acl_missing is False
 
 

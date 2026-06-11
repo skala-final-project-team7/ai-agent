@@ -33,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--request-delay", type=float, default=0.3)
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=20)
+    parser.add_argument("--use-admin-key", action="store_true")
+    parser.add_argument("--site-url", default="")
+    parser.add_argument("--admin-email", default="")
+    parser.add_argument("--admin-api-token", default="")
     return parser
 
 
@@ -50,6 +54,10 @@ def run_cli(
         request_delay_seconds=args.request_delay,
         max_retries=args.max_retries,
         timeout_seconds=args.timeout,
+        use_admin_key=args.use_admin_key,
+        site_url=args.site_url,
+        admin_email=args.admin_email,
+        admin_api_token=args.admin_api_token,
     )
     workflow = build_data_ingestion_workflow(
         config=config,

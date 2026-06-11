@@ -13,6 +13,7 @@ from typing import Any
 from app.adapters.atlassian import (
     AtlassianSourceAdapter,
     ConfluenceRestrictionAclProvider,
+    normalize_webui_link,
     parse_empty_restriction_policy,
     parse_group_identifier_fields,
     parse_read_restrictions_acl,
@@ -110,13 +111,50 @@ def test_fetch_pages_maps_processed_document_to_page_object() -> None:
     assert page.last_modified == parse_atlassian_datetime("2026-05-14T01:00:00Z")
 
 
-def test_fetch_pages_synthesizes_space_acl_and_empty_mvp_fields() -> None:
+def test_fetch_pages_normalizes_webui_link_when_site_url_set() -> None:
+    adapter = AtlassianSourceAdapter(
+        cloud_id="cloud-synthetic",
+        access_token="token-synthetic",
+        client=_FakeConfluenceClient(
+            spaces=[_space()],
+            descendants_by_homepage={"home-001": [_page_ref()]},
+            details_by_page={"page-001": _page_detail()},
+        ),
+        request_delay_seconds=0,
+        site_url="https://tenant.atlassian.net",
+    )
+
+    page = next(iter(adapter.fetch_pages()))
+
+    assert (
+        page.webui_link
+        == "https://tenant.atlassian.net/wiki/spaces/ENG/pages/page-001/Runbook"
+    )
+
+
+def test_normalize_webui_link_handles_absolute_and_relative_paths() -> None:
+    absolute = "https://tenant.atlassian.net/wiki/spaces/ENG/pages/1/T"
+
+    assert normalize_webui_link(absolute, "https://other.atlassian.net") == absolute
+    assert normalize_webui_link("/wiki/spaces/ENG/pages/1/T", "https://tenant.atlassian.net") == (
+        "https://tenant.atlassian.net/wiki/spaces/ENG/pages/1/T"
+    )
+    assert normalize_webui_link("/spaces/ENG/pages/1/T", "https://tenant.atlassian.net/") == (
+        "https://tenant.atlassian.net/wiki/spaces/ENG/pages/1/T"
+    )
+    assert normalize_webui_link("spaces/ENG/pages/1/T", "https://tenant.atlassian.net") == (
+        "https://tenant.atlassian.net/wiki/spaces/ENG/pages/1/T"
+    )
+    assert normalize_webui_link("/wiki/x", "") == "/wiki/x"
+
+
+def test_fetch_pages_without_acl_provider_is_fail_closed_and_empty_mvp_fields() -> None:
     page = next(iter(_adapter().fetch_pages()))
 
-    # PoC ACL 합성: space_key 기반 그룹. is_acl_missing 이 아니어야 색인 대상이 된다.
-    assert page.allowed_groups == ["space:ENG"]
+    # v2.6.2: ACL 값에 space key를 싣지 않는다. provider가 없으면 fail-closed.
+    assert page.allowed_groups == []
     assert page.allowed_users == []
-    assert page.is_acl_missing is False
+    assert page.is_acl_missing is True
     # 에이전트 MVP 미산출 필드는 빈 값으로 매핑된다.
     assert page.labels == []
     assert page.ancestors == []
@@ -301,7 +339,6 @@ def test_parse_group_identifier_fields_rejects_empty_values() -> None:
 
 def test_parse_empty_restriction_policy_accepts_known_values() -> None:
     assert parse_empty_restriction_policy(" mark_missing ") == "mark_missing"
-    assert parse_empty_restriction_policy("space_fallback") == "space_fallback"
     assert parse_empty_restriction_policy(" allow_authenticated ") == "allow_authenticated"
 
 
@@ -312,7 +349,6 @@ def test_parse_empty_restriction_policy_rejects_unknown_values() -> None:
         assert "atlassian_empty_restriction_policy" in str(exc)
         assert "allow_authenticated" in str(exc)
         assert "mark_missing" in str(exc)
-        assert "space_fallback" in str(exc)
     else:
         raise AssertionError("unknown empty restriction policy must be rejected")
 
@@ -328,20 +364,6 @@ def test_confluence_restriction_acl_provider_marks_empty_restriction_missing() -
     assert groups == []
     assert users == []
     assert client.requested_page_ids == ["page-001"]
-
-
-def test_confluence_restriction_acl_provider_can_fallback_to_space_acl() -> None:
-    client = _FakeRestrictionClient(
-        {"operation": "read", "restrictions": {"group": {"results": []}, "user": {"results": []}}}
-    )
-    provider = ConfluenceRestrictionAclProvider(
-        client=client, empty_restriction_policy="space_fallback"
-    )
-
-    groups, users = provider.get_page_acl(page_id="page-001", space_key="ENG")
-
-    assert groups == ["space:ENG"]
-    assert users == []
 
 
 def test_confluence_restriction_acl_provider_can_mark_empty_as_authenticated() -> None:
