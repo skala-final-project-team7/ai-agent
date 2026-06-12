@@ -1,5 +1,8 @@
 """app.ingestion.extractor — 첨부 파일 텍스트 추출기 (FR-002) [stub].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 raw_attachments 의 PDF/Word/Excel 바이너리에서 텍스트를 추출(이미지·도형 제외)해
 attachment_texts(MongoDB)에 적재하고 Chunking Queue(첨부)로 발행한다. Excel/CSV는 시트를
 자연어로 직렬화해 LLM이 수치 맥락을 이해하도록 가공한다.

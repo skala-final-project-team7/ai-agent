@@ -1,7 +1,9 @@
 """질의 라우터 OpenAI transport — system prompt 보강 + schema 강제 [Storage].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : feature17a (라우터 의도 분류 분석) 의 후속 fix — vendoring 한 ``query
           _routing_agent`` 의 기본 prompt 가 4종 의도 (incident_response /
           operations_guide / policy_procedure / history_lookup) 의 정의·구분

@@ -1,3 +1,9 @@
+"""history_manager_agent/schemas/_serialization.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass

@@ -1,3 +1,9 @@
+"""data_sync_agent/messaging/__init__.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from data_sync_agent.messaging.payloads import (
     LocalMessagePayloadWriter,
     build_changed_message_payload,

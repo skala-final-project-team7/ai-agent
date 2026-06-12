@@ -1,8 +1,14 @@
+"""ai-agent/answer-verification-agent/src/answer_verification_agent/verification/sentence_parser.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Verification Agent sentence/citation parser.
           feature3 범위에서는 rule 판정 없이 문장, citation, context id 유효성,
           citation coverage만 계산해 후속 rule verifier 입력을 준비한다.

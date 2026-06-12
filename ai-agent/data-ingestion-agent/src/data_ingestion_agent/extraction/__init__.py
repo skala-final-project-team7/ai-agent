@@ -1,4 +1,8 @@
-"""HTML extraction services for Data Ingestion Agent."""
+"""HTML extraction services for Data Ingestion Agent.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from data_ingestion_agent.extraction.html_extractor import (
     HtmlExtractionResult,

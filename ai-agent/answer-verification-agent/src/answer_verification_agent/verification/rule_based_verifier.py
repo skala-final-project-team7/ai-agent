@@ -1,8 +1,14 @@
+"""ai-agent/answer-verification-agent/src/answer_verification_agent/verification/rule_based_verifier.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Verification Agent rule-based verifier.
           feature4 범위에서는 parser 결과를 citation/context/token/numeric/source
           rule로 평가하고 sentence별 preliminary label과 score를 생성한다.

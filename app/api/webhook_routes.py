@@ -1,4 +1,8 @@
-"""Confluence 삭제 Webhook 라우트 — POST /ml/confluence/webhook."""
+"""Confluence 삭제 Webhook 라우트 — POST /ml/confluence/webhook.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

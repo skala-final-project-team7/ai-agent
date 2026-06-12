@@ -1,8 +1,14 @@
+"""ai-agent/answer-generation-agent/src/answer_generation_agent/generation/answer_output_builder.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Generation Agent canonical AnswerOutput 조립 및 local JSON writer 구현.
           feature6 범위에서 Answer Verification Agent가 소비 가능한 output/report를 생성한다.
 작성일 : 2026-05-18

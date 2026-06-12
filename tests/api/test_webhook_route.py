@@ -1,4 +1,8 @@
-"""Confluence 삭제 Webhook 라우트 회귀 테스트."""
+"""Confluence 삭제 Webhook 라우트 회귀 테스트.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

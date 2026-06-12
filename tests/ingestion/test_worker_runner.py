@@ -1,4 +1,8 @@
-"""RabbitMQ channel runner tests for chunking worker ack/nack behavior."""
+"""RabbitMQ channel runner tests for chunking worker ack/nack behavior.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

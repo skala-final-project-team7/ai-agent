@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
+"""ai-agent/history-manager-agent/scripts/run_history_manager.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : History Manager Agent CLI 실행 스크립트.
           실제 CLI 구현은 package module에 두고 이 파일은 수동 실행 진입점으로만 유지한다.
 작성일 : 2026-05-15

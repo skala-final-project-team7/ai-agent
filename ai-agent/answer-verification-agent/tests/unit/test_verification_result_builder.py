@@ -1,3 +1,9 @@
+"""ai-agent/answer-verification-agent/tests/unit/test_verification_result_builder.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 import json

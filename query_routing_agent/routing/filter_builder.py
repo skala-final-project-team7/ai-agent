@@ -1,8 +1,14 @@
+"""query_routing_agent/routing/filter_builder.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Query Routing Agent feature5 metadata filter, ACL payload,
           task prompt type, Multi-Pool weight builder 구현.
 작성일 : 2026-05-15

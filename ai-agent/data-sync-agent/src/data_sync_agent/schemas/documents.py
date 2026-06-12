@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/schemas/documents.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent changed document schema 정의.
           Data Ingestion Agent processed document 계약과 호환되는 필드를 유지한다.
 작성일 : 2026-05-14

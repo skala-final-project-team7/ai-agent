@@ -1,4 +1,8 @@
-"""Canonical schemas for Data Ingestion Agent MVP outputs."""
+"""Canonical schemas for Data Ingestion Agent MVP outputs.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from data_ingestion_agent.schemas.documents import (
     AttachmentProcessingStatus,

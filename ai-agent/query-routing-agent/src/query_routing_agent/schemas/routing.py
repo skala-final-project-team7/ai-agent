@@ -1,8 +1,14 @@
+"""ai-agent/query-routing-agent/src/query_routing_agent/schemas/routing.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Query Routing Agent feature1 canonical schema 정의.
 작성일 : 2026-05-15
 변경사항 내역 (날짜, 변경목적, 변경내용 순)

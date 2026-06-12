@@ -1,8 +1,14 @@
+"""answer_generation_agent/scripts/run_answer_generation.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Generation Agent CLI entrypoint.
           feature7에서는 local JSON input/output workflow를 실행한다.
 작성일 : 2026-05-18

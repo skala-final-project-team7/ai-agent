@@ -1,4 +1,8 @@
-"""Evaluator provider exports for Answer Verification Agent."""
+"""Evaluator provider exports for Answer Verification Agent.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from answer_verification_agent.evaluator.prompt import (
     EvaluatorPrompt,

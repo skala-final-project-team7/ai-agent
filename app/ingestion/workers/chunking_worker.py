@@ -1,7 +1,9 @@
 """Chunking + Embedding Worker (FR-003/FR-004) — content.chunking 소비 [Pipeline].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : Data Ingestion Agent(FR-001)가 발행한 ``content.chunking`` 메시지를 소비해
           ``raw_pages`` 본문을 로드 → Adaptive Chunker(chunk_page) → Dual Embedding +
           Multi-Pool Qdrant upsert(index_chunks, embedding_cache 멱등성)까지 한 흐름으로

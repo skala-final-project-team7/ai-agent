@@ -1,8 +1,14 @@
+"""ai-agent/answer-verification-agent/src/answer_verification_agent/verification/suspicious_selector.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Verification Agent suspicious sentence selector.
           feature5 범위에서는 rule-based verifier 결과를 기반으로 LLM evaluator
           대상 문장을 선정한다.

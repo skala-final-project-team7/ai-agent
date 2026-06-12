@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/confluence/client.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent Confluence metadata API client 구현.
           Space 목록과 Space별 Page metadata 수집, pagination, retry/error 분류를 담당한다.
 작성일 : 2026-05-15

@@ -1,8 +1,14 @@
+"""ai-agent/data-ingestion-agent/src/data_ingestion_agent/storage/local_repository.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Ingestion Agent local JSON/JSONL output repository 구현.
 작성일 : 2026-05-14
 변경사항 내역 (날짜, 변경목적, 변경내용 순)

@@ -1,3 +1,9 @@
+"""ai-agent/query-routing-agent/src/query_routing_agent/llm/__init__.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from query_routing_agent.llm.classification import (
     ClassificationValidationError,
     IntentClassificationResult,

@@ -1,5 +1,8 @@
 """Ingestion completion event publisher.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 api-spec v2.5.0 replaces the old BFF polling/revoke callback flow with a RabbitMQ
 completion event. ML/Data Ingestion publishes terminal job state, and BFF consumes the
 event to request Admin Key deactivation through auth-server.

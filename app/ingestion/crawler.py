@@ -1,5 +1,8 @@
 """Data Ingestion Agent — Confluence Full Crawl (FR-001) [Agent 오케스트레이션].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
 작성목적 : vendored Data Ingestion Agent(저장소 루트 ``data_ingestion_agent``)를
           ``AtlassianSourceAdapter`` 로 감싸 Full Crawl 을 오케스트레이션한다. 수집한

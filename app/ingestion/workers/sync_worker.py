@@ -1,4 +1,8 @@
-"""Sync Worker — Delta / Trash / Webhook 삭제 트리거를 soft-delete 로 수렴."""
+"""Sync Worker — Delta / Trash / Webhook 삭제 트리거를 soft-delete 로 수렴.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

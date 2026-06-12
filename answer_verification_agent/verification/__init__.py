@@ -1,4 +1,8 @@
-"""Verification service exports for Answer Verification Agent."""
+"""Verification service exports for Answer Verification Agent.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from answer_verification_agent.verification.input_normalization import (
     NormalizedAnswerOutput,

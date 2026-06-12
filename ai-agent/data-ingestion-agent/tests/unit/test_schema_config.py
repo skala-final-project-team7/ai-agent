@@ -1,3 +1,9 @@
+"""ai-agent/data-ingestion-agent/tests/unit/test_schema_config.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

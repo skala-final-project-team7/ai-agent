@@ -1,4 +1,8 @@
-"""Attachment extraction worker tests."""
+"""Attachment extraction worker tests.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

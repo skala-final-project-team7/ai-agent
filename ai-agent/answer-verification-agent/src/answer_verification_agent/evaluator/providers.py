@@ -1,8 +1,14 @@
+"""ai-agent/answer-verification-agent/src/answer_verification_agent/evaluator/providers.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Verification Agent evaluator provider 구현.
           feature6 범위에서는 fake evaluator와 OpenAI adapter를 provider interface 뒤에
           분리하고, 테스트는 injected transport로만 수행한다.

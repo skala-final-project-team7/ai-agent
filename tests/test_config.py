@@ -1,4 +1,8 @@
-"""app.config.Settings — 환경 설정 로딩 검증."""
+"""app.config.Settings — 환경 설정 로딩 검증.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 import os
 

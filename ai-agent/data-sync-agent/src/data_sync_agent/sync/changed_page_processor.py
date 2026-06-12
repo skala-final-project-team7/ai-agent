@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/sync/changed_page_processor.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent changed page processing service 구현.
           diff 결과의 new/updated Page만 상세 조회해 changed document로 변환한다.
 작성일 : 2026-05-15

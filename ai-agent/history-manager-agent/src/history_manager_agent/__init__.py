@@ -1,1 +1,5 @@
-"""History Manager Agent package."""
+"""History Manager Agent package.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""

@@ -1,7 +1,9 @@
 """Ingestion 파이프라인 조립 (in-process PoC) [Pipeline].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : 큐로 분리된 두 단계(Full Crawl → ``content.chunking`` 발행 // chunking_worker →
           Qdrant upsert)를 PoC·로컬·통합 테스트용으로 **in-process 합성**한다. 운영에서는
           RabbitMQ 로 분리된 독립 Worker 로 동작하지만(EKS 독립 스케일링), 본 모듈은 전체

@@ -1,4 +1,8 @@
-"""Ingestion mapping and report helpers."""
+"""Ingestion mapping and report helpers.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from data_ingestion_agent.ingestion.helpers import (
     build_failed_item,

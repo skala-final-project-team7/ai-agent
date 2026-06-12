@@ -1,8 +1,14 @@
+"""data_ingestion_agent/graph/workflow.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : LangGraph 기반 Data Ingestion workflow builder와 fallback 제공.
 작성일 : 2026-05-14
 변경사항 내역 (날짜, 변경목적, 변경내용 순)

@@ -1,8 +1,14 @@
+"""data_ingestion_agent/workflow.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Ingestion Agent full crawl workflow orchestration 구현.
           node는 orchestration만 담당하고 client/mapper/repository service를 재사용한다.
 작성일 : 2026-05-14

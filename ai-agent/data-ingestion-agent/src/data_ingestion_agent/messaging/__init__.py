@@ -1,1 +1,5 @@
-"""Messaging package placeholder for post-MVP interface-only extensions."""
+"""Messaging package placeholder for post-MVP interface-only extensions.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""

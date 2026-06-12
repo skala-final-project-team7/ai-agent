@@ -1,3 +1,9 @@
+"""ai-agent/data-sync-agent/tests/unit/test_diff_engine.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 from uuid import uuid4

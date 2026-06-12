@@ -1,8 +1,14 @@
+"""data_sync_agent/workflow.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent delta sync workflow orchestration 구현.
           기존 snapshot repository, Confluence client, diff engine, changed page
           processor, deleted/message payload helper를 연결하고 LangGraph 미설치

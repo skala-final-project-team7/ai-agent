@@ -1,5 +1,8 @@
 """app.ingestion.workers — RabbitMQ 단계별 Worker (비동기 수집 파이프라인) [stub].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 각 Worker는 사용자 요청 트래픽과 분리된 RabbitMQ 큐를 소비해 한 단계를 처리하고 다음 큐로
 메시지를 발행한다. EKS에서 독립 스케일링한다(요구사항정의서 §2.3, docs/architecture.md).
 

@@ -1,4 +1,8 @@
-"""DocumentSourceAdapter 추상 인터페이스 + ActiveIds / ChangeEvent 검증."""
+"""DocumentSourceAdapter 추상 인터페이스 + ActiveIds / ChangeEvent 검증.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 import pytest
 

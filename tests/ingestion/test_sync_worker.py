@@ -1,4 +1,8 @@
-"""SyncWorker 삭제 트리거 테스트."""
+"""SyncWorker 삭제 트리거 테스트.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

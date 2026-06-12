@@ -1,3 +1,9 @@
+"""ai-agent/query-routing-agent/tests/unit/test_intent_classification_provider.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 import json

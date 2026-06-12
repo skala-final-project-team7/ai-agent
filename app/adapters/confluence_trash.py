@@ -1,4 +1,8 @@
-"""Confluence Trash 소스 — 삭제된 page/attachment id 수집."""
+"""Confluence Trash 소스 — 삭제된 page/attachment id 수집.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

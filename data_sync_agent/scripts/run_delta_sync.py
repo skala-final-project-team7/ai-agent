@@ -1,8 +1,14 @@
+"""data_sync_agent/scripts/run_delta_sync.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent delta sync CLI 구현.
           CLI 인자로 외부 주입 config를 구성하고 workflow를 실행한다.
 작성일 : 2026-05-15

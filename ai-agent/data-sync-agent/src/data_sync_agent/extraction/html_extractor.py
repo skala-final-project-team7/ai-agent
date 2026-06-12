@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/extraction/html_extractor.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent storage HTML plain text extraction 구현.
           Confluence storage HTML 원문을 보존하면서 후속 changed document용 plain text를 만든다.
 작성일 : 2026-05-15

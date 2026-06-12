@@ -1,5 +1,8 @@
 """Ingestion LangGraph 조립 검증 (feature6 Phase 4).
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 설계서 §3.1 + Big Picture 정합 — 단일 PageObject 를 analyze → chunk → embed_upsert
 3 노드를 거쳐 Qdrant + chunk_lookup 에 적재한다. 각 단계 종료 시 IngestionJobs 적재.
 Agent 노드(문서 분석기)는 Fake classifier/cache 기반 DocumentAnalyzer 기본값. 본문/첨부

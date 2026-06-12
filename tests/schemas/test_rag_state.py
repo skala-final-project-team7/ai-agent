@@ -1,4 +1,8 @@
-"""RagState / IngestionState — LangGraph 노드 상태 스키마 검증."""
+"""RagState / IngestionState — LangGraph 노드 상태 스키마 검증.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from app.schemas.chunk import Chunk, ChunkMetadata
 from app.schemas.enums import IngestionStage, Intent

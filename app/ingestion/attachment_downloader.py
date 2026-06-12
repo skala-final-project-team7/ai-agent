@@ -1,4 +1,8 @@
-"""Attachment binary download boundary for extraction workers."""
+"""Attachment binary download boundary for extraction workers.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

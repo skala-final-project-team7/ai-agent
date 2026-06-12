@@ -1,7 +1,9 @@
 """Error Response 정의 — api-spec.md Error Response 표 정합 [Pipeline].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : RAG 파이프라인 HTTP 계층의 Error Response 스키마와 표준 코드를 정의한다.
           `RETRIEVAL_EMPTY` / `LOW_CONFIDENCE` / `VERIFICATION_BLOCKED` 같은 "표준
           분기 응답"은 200 SSE 성공 응답 내부에서 처리되므로(`feedback_enabled=False`

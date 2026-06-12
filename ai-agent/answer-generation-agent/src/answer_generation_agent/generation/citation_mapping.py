@@ -1,8 +1,14 @@
+"""ai-agent/answer-generation-agent/src/answer_generation_agent/generation/citation_mapping.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Generation Agent sentence-level citation mapping 구현.
           LLM raw answer와 Top context를 검증 가능한 sentence/source 구조로 변환한다.
 작성일 : 2026-05-18

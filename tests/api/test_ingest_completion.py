@@ -1,4 +1,8 @@
-"""Ingestion completion event tests."""
+"""Ingestion completion event tests.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

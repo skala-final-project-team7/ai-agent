@@ -1,3 +1,9 @@
+"""ai-agent/query-routing-agent/src/query_routing_agent/routing/__init__.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from query_routing_agent.routing.filter_builder import (
     FilterAndWeightResult,
     build_filter_and_pool_weights,

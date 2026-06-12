@@ -1,4 +1,8 @@
-"""count_tokens — PoC 토큰 카운터 검증 (chunking-strategy.md §7)."""
+"""count_tokens — PoC 토큰 카운터 검증 (chunking-strategy.md §7).
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from app.ingestion.chunker.tokenizer import count_tokens
 

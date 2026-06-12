@@ -1,5 +1,8 @@
 """lina-ai-agents 패키징 surface 회귀 테스트.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 deploy 레포는 이 저장소를 설치한 뒤 6개 top-level agent 패키지를 그대로 import한다.
 루트 통합 앱 패키지(`app*`)가 배포 산출물에 섞이면 rag-deploy/ingestion-deploy의 `app`
 패키지와 충돌하므로, pyproject metadata와 setuptools package discovery를 함께 고정한다.

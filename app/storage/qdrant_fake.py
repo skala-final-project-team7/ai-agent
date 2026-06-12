@@ -1,7 +1,9 @@
 """In-memory Fake Qdrant Multi-Pool Store — PoC·테스트용 [Storage].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : ``QdrantPoolStore`` 의 적재(upsert)·삭제 동기화(scroll/delete) 인터페이스를 외부
           Qdrant 서버 없이 in-memory 로 재현하는 Fake. Ingestion indexer 의 멱등 upsert 와
           삭제 동기화(reconcile_deletions)의 scroll/delete 를 PoC·단위 테스트에서 구동하기

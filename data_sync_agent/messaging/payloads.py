@@ -1,8 +1,14 @@
+"""data_sync_agent/messaging/payloads.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent deleted item 및 message payload 생성 helper 구현.
           실제 RabbitMQ 발행 없이 local payload 구조만 생성한다.
 작성일 : 2026-05-15

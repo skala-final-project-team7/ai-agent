@@ -1,3 +1,9 @@
+"""ai-agent/answer-verification-agent/src/answer_verification_agent/workflow.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """Answer Verification Agent workflow orchestration."""

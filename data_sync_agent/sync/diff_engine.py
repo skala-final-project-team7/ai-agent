@@ -1,8 +1,14 @@
+"""data_sync_agent/sync/diff_engine.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent snapshot diff engine 구현.
           previous/current PageSnapshot을 비교해 new/updated/unchanged/deleted_candidate를 분류한다.
 작성일 : 2026-05-15

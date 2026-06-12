@@ -1,5 +1,8 @@
 """Multi-Pool Vector Store payload 구성 검증 (feature5-A) — db-schema.md §1.2.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 build_point_payload: Chunk를 Qdrant Point payload dict로 변환한다.
 """
 

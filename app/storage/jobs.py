@@ -1,7 +1,9 @@
 """Ingestion Jobs Repository — ``ingestion_jobs`` 컬렉션 적재 어댑터 [Storage].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : Ingestion 파이프라인 각 단계(analyze / chunk / embed / upsert / sync)의 처리
           결과를 MongoDB ``ingestion_jobs`` 컬렉션에 기록하기 위한 어댑터. 설계서 §3.1
           + db-schema §2.3 정합 (7필드: page_id / attachment_id / stage / status /

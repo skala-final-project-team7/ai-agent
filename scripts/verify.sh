@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 작성자 : 이영훈
+# 담당 영역 : ai-agent
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

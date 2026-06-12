@@ -1,8 +1,14 @@
+"""answer_generation_agent/generation/input_normalization.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Generation Agent generation input JSON 로드 및 정규화.
           Query Routing output과 Top context 입력을 안전한 내부 schema로 변환한다.
 작성일 : 2026-05-18

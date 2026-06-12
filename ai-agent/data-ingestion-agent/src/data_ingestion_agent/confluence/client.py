@@ -1,8 +1,14 @@
+"""ai-agent/data-ingestion-agent/src/data_ingestion_agent/confluence/client.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Confluence API 호출을 담당하는 client/transport 계층 구현.
           feature2 범위에서 pagination, retry/backoff, 오류 분류를 제공한다.
 작성일 : 2026-05-14

@@ -1,5 +1,8 @@
 """Confluence ingestion credential boundary.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 auth-server owns credential storage and Admin Key activation/deactivation.  The
 ingestion worker receives only an ``adminUserId`` in public job payloads, then
 resolves it through an internal auth-server API before calling Confluence.

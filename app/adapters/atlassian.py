@@ -1,7 +1,9 @@
 """Atlassian Document Source Adapter — vendored Data Ingestion Agent 연결 [Agent 경계].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : 저장소 루트에 무수정 vendoring 된 Data Ingestion Agent(FR-001 Confluence Full
           Crawl)를 ``DocumentSourceAdapter`` 계약으로 감싼다. 에이전트는 자체
           ``ProcessedDocument`` 스키마(space/page/body/metadata 중첩)를 산출하므로, 본

@@ -1,3 +1,9 @@
+"""tests/data_sync_agent/tests/unit/test_html_extraction.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 from data_sync_agent.extraction.html_extractor import extract_storage_html

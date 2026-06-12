@@ -1,8 +1,14 @@
+"""query_routing_agent/routing/query_rewrite.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Query Routing Agent feature4 query rewrite service 구현.
           LLM hint와 preserved context를 검색용 expanded query 목록으로 정규화한다.
 작성일 : 2026-05-15

@@ -1,8 +1,14 @@
+"""history_manager_agent/llm/providers.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : History Manager Agent LLM provider interface, fake provider,
           OpenAI provider adapter 구현.
 작성일 : 2026-05-15

@@ -1,4 +1,8 @@
-"""CLI entrypoint for the RabbitMQ-backed chunking worker."""
+"""CLI entrypoint for the RabbitMQ-backed chunking worker.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

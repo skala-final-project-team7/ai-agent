@@ -1,8 +1,14 @@
+"""data_ingestion_agent/extraction/html_extractor.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Confluence storage HTML 원문 보존 및 plain text 추출 서비스 구현.
           HTML extraction은 후속 processed document pipeline과 분리된 일반 함수로 제공한다.
 작성일 : 2026-05-14

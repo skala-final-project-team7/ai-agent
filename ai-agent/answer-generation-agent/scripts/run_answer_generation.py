@@ -1,3 +1,9 @@
+"""ai-agent/answer-generation-agent/scripts/run_answer_generation.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 import sys

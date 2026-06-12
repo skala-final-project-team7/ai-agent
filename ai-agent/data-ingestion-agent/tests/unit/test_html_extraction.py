@@ -1,3 +1,9 @@
+"""ai-agent/data-ingestion-agent/tests/unit/test_html_extraction.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 from data_ingestion_agent.extraction import HtmlExtractionResult, extract_storage_html

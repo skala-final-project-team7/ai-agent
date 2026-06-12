@@ -1,5 +1,8 @@
 """Temporary Confluence Basic Auth smoke for Admin Key ACL checks.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 This script is intentionally separate from the production ingestion adapter. The production
 path expects an OAuth access token from BFF/Auth Server. Use this smoke only while the backend
 OAuth flow is not ready, to verify real Confluence page visibility and restriction metadata.

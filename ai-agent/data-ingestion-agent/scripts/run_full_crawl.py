@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""ai-agent/data-ingestion-agent/scripts/run_full_crawl.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """CLI entrypoint for Data Ingestion Agent full crawl."""

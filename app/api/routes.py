@@ -1,4 +1,8 @@
-"""Backward-compatible module alias for query routes."""
+"""Backward-compatible module alias for query routes.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

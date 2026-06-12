@@ -1,4 +1,8 @@
-"""QueryResponse / Source / Verification 스키마 검증 (docs/api-spec.md)."""
+"""QueryResponse / Source / Verification 스키마 검증 (docs/api-spec.md).
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from app.schemas.enums import (
     Intent,

@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/config/settings.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent 실행 설정 스키마 정의.
           cloud_id와 access_token은 외부 주입으로만 받고 안전 직렬화에서 token을 제거한다.
 작성일 : 2026-05-14

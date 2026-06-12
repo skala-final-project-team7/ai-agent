@@ -1,4 +1,8 @@
-"""soft-delete 적용 seam — Delta / Trash / Webhook 삭제 트리거 공통 funnel."""
+"""soft-delete 적용 seam — Delta / Trash / Webhook 삭제 트리거 공통 funnel.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

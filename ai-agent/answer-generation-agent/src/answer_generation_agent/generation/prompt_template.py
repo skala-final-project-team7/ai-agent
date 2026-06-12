@@ -1,8 +1,14 @@
+"""ai-agent/answer-generation-agent/src/answer_generation_agent/generation/prompt_template.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Generation Agent task prompt template builder.
           normalized input과 Top context를 LLM provider용 prompt payload로 조립한다.
 작성일 : 2026-05-18

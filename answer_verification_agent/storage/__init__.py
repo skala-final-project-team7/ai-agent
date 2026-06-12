@@ -1,4 +1,8 @@
-"""Local storage exports."""
+"""Local storage exports.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from answer_verification_agent.storage.local_repository import (
     write_failed_artifacts,

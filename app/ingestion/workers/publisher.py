@@ -1,7 +1,9 @@
 """Queue Publisher — RabbitMQ 라우팅 키 발행 어댑터 [Storage 경계].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 --------------------------------------------------
-작성자 : 최태성
 작성목적 : 수집/동기화 단계가 다음 단계 큐(Chunking 등)로 메시지를 발행하기 위한 얇은
           publisher 추상화. 비즈니스 로직(crawler/sync)이 pika 에 직접 결합하지 않도록
           ABC + Fake + Pika 3계층으로 분리한다(`app/CLAUDE.md` §8). 메시지 페이로드에는

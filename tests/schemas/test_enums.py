@@ -1,4 +1,8 @@
-"""enums 값이 설계 문서(rag-pipeline-design.md / chunking-strategy.md)와 정합하는지 검증."""
+"""enums 값이 설계 문서(rag-pipeline-design.md / chunking-strategy.md)와 정합하는지 검증.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from app.schemas.enums import (
     AttachmentType,

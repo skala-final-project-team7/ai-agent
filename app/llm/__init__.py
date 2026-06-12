@@ -1,5 +1,8 @@
 """app.llm — LLM 클라이언트 래퍼 [Agent 인프라].
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 Agent 컴포넌트가 사용하는 LLM 호출을 한 곳으로 모은다. 모델 라우팅·타임아웃·재시도·
 Function Calling 스키마 강제·토큰 비용 로깅을 공통 처리한다.
 

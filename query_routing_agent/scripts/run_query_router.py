@@ -1,8 +1,14 @@
+"""query_routing_agent/scripts/run_query_router.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Query Routing Agent CLI entrypoint.
           History Manager output을 routing workflow로 처리한다.
 작성일 : 2026-05-15

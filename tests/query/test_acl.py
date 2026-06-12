@@ -1,5 +1,8 @@
 """ACL Pre-filtering 검증 (feature7) — rag-pipeline-design.md §6, db-schema.md §1.4.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 extract_principal(JWT 클레임 추출), build_acl_filter(Qdrant should 필터 생성),
 @enforce_acl(ACL 없는 검색 호출 거부)을 검증한다.
 """

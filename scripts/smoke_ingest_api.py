@@ -1,5 +1,8 @@
 """Local smoke test for /ml/ingest.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 Runs the FastAPI route through ASGITransport with json_fixture + fake/in-memory ingestion
 dependencies. No external Confluence, Qdrant, MongoDB, OpenAI, or BFF callback is required.
 """

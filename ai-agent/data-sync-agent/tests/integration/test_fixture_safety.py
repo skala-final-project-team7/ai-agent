@@ -1,3 +1,9 @@
+"""ai-agent/data-sync-agent/tests/integration/test_fixture_safety.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 import json

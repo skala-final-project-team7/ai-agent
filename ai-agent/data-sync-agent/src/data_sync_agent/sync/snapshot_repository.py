@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/sync/snapshot_repository.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent local snapshot repository 구현.
           previous/current snapshot 파일 I/O를 workflow 로직과 분리해 후속 MongoDB adapter 교체를 쉽게 한다.
 작성일 : 2026-05-15

@@ -1,4 +1,8 @@
-"""Attachment extraction worker for ``content.extract.attachment`` messages."""
+"""Attachment extraction worker for ``content.extract.attachment`` messages.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
 
 from __future__ import annotations
 

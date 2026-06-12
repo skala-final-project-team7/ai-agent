@@ -1,8 +1,14 @@
+"""ai-agent/answer-generation-agent/src/answer_generation_agent/generation/workflow.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Generation Agent feature7 workflow orchestration 구현.
           기존 service/helper를 연결하고 LangGraph optional fallback과 CLI 실행 결과를 제공한다.
 작성일 : 2026-05-18

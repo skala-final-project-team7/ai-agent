@@ -1,8 +1,14 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/app/entrypoint.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Sync Agent CLI/workflow 진입점이 공유할 최소 app context 구성.
 작성일 : 2026-05-14
 변경사항 내역 (날짜, 변경목적, 변경내용 순)

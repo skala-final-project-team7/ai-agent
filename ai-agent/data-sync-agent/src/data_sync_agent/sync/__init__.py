@@ -1,3 +1,9 @@
+"""ai-agent/data-sync-agent/src/data_sync_agent/sync/__init__.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from data_sync_agent.sync.snapshot_repository import (
     LATEST_SNAPSHOT_FILE_NAME,
     LOCAL_SNAPSHOT_FORMAT_VERSION,

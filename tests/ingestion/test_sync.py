@@ -1,5 +1,8 @@
 """run_delta_sync 단위 테스트 — vendored Data Sync Agent 통합 경계 검증.
 
+작성자 : 이영훈
+담당 영역 : ai-agent
+
 vendored delta sync workflow 는 fake runner 로 대체하고, ChangedDocument→PageObject
 매핑·raw_pages 적재·Chunking Queue 재투입·삭제 후보 집계를 검증한다. 기존
 reconcile_deletions 는 본 테스트에서 건드리지 않는다(무수정 보존).

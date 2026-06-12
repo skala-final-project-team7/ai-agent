@@ -1,8 +1,14 @@
+"""ai-agent/answer-verification-agent/src/answer_verification_agent/verification/input_normalization.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Answer Verification Agent verification input 로드/정규화 서비스.
           feature2 범위에서는 sentence/citation parsing 없이 후속 단계가 사용할
           Answer Generation output과 context의 canonical shape만 준비한다.

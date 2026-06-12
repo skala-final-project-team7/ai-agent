@@ -1,8 +1,14 @@
+"""ai-agent/data-ingestion-agent/src/data_ingestion_agent/config/settings.py 모듈.
+
+작성자 : 이영훈
+담당 영역 : ai-agent
+"""
+
 from __future__ import annotations
 
 """
 --------------------------------------------------
-작성자 : Codex
+작성자 : 이영훈
 작성목적 : Data Ingestion Agent 실행 설정 스키마 정의.
           민감값은 외부 주입으로만 받고 직렬화 시 노출하지 않는다.
 작성일 : 2026-05-14
