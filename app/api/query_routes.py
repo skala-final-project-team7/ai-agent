@@ -56,7 +56,8 @@ from app.metrics import llm_fallback_total
 from app.pipeline.nodes import verify_pipeline_node
 from app.pipeline.query_graph import run_query
 from app.query.acl import ACLViolationError, build_acl_filter
-from app.query.formatter import format_response
+from app.query.citation_display import CitationMarkerStreamFilter
+from app.query.formatter import BLOCKED_ANSWER_MESSAGE, format_response
 from app.query.openai_streaming import stream_openai_answer
 from app.query.titler import fallback_title, generate_conversation_title
 from app.schemas.enums import Intent, LlmModel
@@ -393,6 +394,7 @@ async def _streaming_event_stream_inner(
     yield _status_event("answering")
 
     accumulated_tokens: list[str] = []
+    display_filter = CitationMarkerStreamFilter()
     used_model = primary_model
     # feature19 status — streaming. 첫 token chunk 송신 직전 1회만 송신(fallback 재시도
     # 시에도 중복 송신하지 않도록 플래그로 한 번만 보낸다).
@@ -410,7 +412,9 @@ async def _streaming_event_stream_inner(
                 yield _status_event("streaming")
                 streaming_status_sent = True
             accumulated_tokens.append(token_chunk.text)
-            yield _token_event(token_chunk.text)
+            display_text = display_filter.feed(token_chunk.text)
+            if display_text:
+                yield _token_event(display_text)
     except RateLimitError:
         # 설계서 §4.6.5 — 429 시 fallback_model 로 1회 재시도. 부분 토큰을 이미
         # 송신했다면 UI 가 덮어쓸 수 있도록 빈 token 이벤트로 clear.
@@ -426,6 +430,7 @@ async def _streaming_event_stream_inner(
         ).inc()
         if accumulated_tokens:
             accumulated_tokens.clear()
+            display_filter = CitationMarkerStreamFilter()
             yield _token_event("")
         used_model = fallback_model
         for token_chunk in stream_openai_answer(
@@ -440,9 +445,14 @@ async def _streaming_event_stream_inner(
                 yield _status_event("streaming")
                 streaming_status_sent = True
             accumulated_tokens.append(token_chunk.text)
-            yield _token_event(token_chunk.text)
+            display_text = display_filter.feed(token_chunk.text)
+            if display_text:
+                yield _token_event(display_text)
 
     answer = "".join(accumulated_tokens)
+    trailing_display_text = display_filter.flush()
+    if trailing_display_text:
+        yield _token_event(trailing_display_text)
     rerank_state.answer = answer
     rerank_state.used_llm = _resolve_used_llm(used_model)
 
@@ -464,11 +474,11 @@ async def _streaming_event_stream_inner(
         latency_ms=int(elapsed_ms),
     )
     # meta.title — 스트리밍된 실제 답변을 맥락으로 제목 생성. api-spec §1-1 Required: N.
-    response.title = _resolve_title(request, question=state.query, answer=answer)
+    response.title = _resolve_title(request, question=state.query, answer=response.answer or "")
     # 답변이 차단 분기(BLOCKED_ANSWER_MESSAGE)로 대체된 경우, UI 가 이미 송신된 원본
     # 토큰을 차단 메시지로 덮어쓰도록 'token' 이벤트를 1회 더 송신한다. 불변식 #2 준수를
     # 위해 verifying/formatting status 보다 **먼저** 보낸다.
-    if response.answer != answer:
+    if response.answer == BLOCKED_ANSWER_MESSAGE:
         yield _token_event(response.answer)
     # feature19 status — verifying → formatting (검증은 위에서 이미 수행, status 는 표시용).
     yield _status_event("verifying")

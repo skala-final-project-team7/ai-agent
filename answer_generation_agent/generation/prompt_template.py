@@ -33,27 +33,27 @@ _TASK_INSTRUCTIONS: dict[TaskPromptType, str] = {
     TaskPromptType.TIMELINE: (
         "Task Prompt Type: timeline\n"
         "목적: 장애 대응.\n"
-        "답변에는 상황 요약, 시간/단계 흐름, 조치 순서, 근거를 포함한다."
+        "답변에는 상황 요약, 시간/단계 흐름, 조치 순서, 확인 기준을 포함한다."
     ),
     TaskPromptType.STEP_BY_STEP: (
         "Task Prompt Type: step_by_step\n"
         "목적: 운영 가이드.\n"
-        "답변에는 단계별 절차, 주의사항, 확인 방법을 포함한다."
+        "답변에는 단계별 절차, 선행 조건, 주의사항, 확인 방법을 포함한다."
     ),
     TaskPromptType.EVIDENCE_FIRST: (
         "Task Prompt Type: evidence_first\n"
         "목적: 정책·절차.\n"
-        "답변에는 근거 문서/조항 우선, 결론, 예외/주의사항을 포함한다."
+        "답변에는 근거 문서/조항 우선, 결론, 적용 조건, 예외/주의사항을 포함한다."
     ),
     TaskPromptType.HISTORY_SUMMARY: (
         "Task Prompt Type: history_summary\n"
         "목적: 이력 조회.\n"
-        "답변에는 변경/처리 이력 요약, 날짜/대상/결과를 포함한다."
+        "답변에는 변경/처리 이력 요약, 날짜/대상/결과, 후속 확인 사항을 포함한다."
     ),
     TaskPromptType.GENERAL: (
         "Task Prompt Type: general\n"
         "목적: 일반 질문.\n"
-        "답변은 간결한 직접 답변과 근거 출처를 포함한다."
+        "답변은 결론을 먼저 제시하고, 근거가 있는 핵심 내용을 충분히 구체적으로 설명한다."
     ),
 }
 
@@ -184,8 +184,13 @@ def _build_system_prompt() -> str:
             "You are the Answer Generation Agent in a RAG pipeline.",
             "제공된 context 밖의 사실을 단정하지 않는다.",
             "가능한 한 입력 context 안에서 답변을 구성한다.",
-            "근거가 부족한 부분은 제한 사항으로 표시한다.",
+            "근거가 부족한 부분은 답변 본문에 섞지 말고 제한 사항으로 분리한다.",
             "context가 존재하면 근거 있는 범위에서 최대한 답변한다.",
+            "질문과 관련된 context가 하나 이상 있으면 답변 전체를 확인 불가로 처리하지 않는다.",
+            "확인 가능한 내용을 먼저 답하고, context에 실제로 없는 세부 항목만 "
+            "제한 사항으로 표시한다.",
+            "답변은 1~2문장으로 끝내지 말고 결론, 근거, 절차/조건/주의사항을 "
+            "포함해 충분히 설명한다.",
             "모든 핵심 문장은 sentence-level citation을 포함해야 한다.",
             "citation은 반드시 제공된 context_id만 참조한다.",
         ]
@@ -212,7 +217,9 @@ def _structured_output_instruction() -> str:
         "  ],\n"
         '  "unsupported_gaps": ["context로 확인할 수 없는 제한 사항"]\n'
         "}\n"
-        "sentences의 citations는 Top context의 context_id만 사용한다."
+        "answer와 sentences.text에는 [#1] 같은 표시용 마커를 쓰지 않는다.\n"
+        "sentences의 citations는 Top context의 context_id만 사용한다.\n"
+        "unsupported_gaps에는 답변한 내용을 반복하지 말고, context에 없는 세부 정보만 넣는다."
     )
 
 

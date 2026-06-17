@@ -561,12 +561,9 @@ async def test_query_route_stream_true_emits_multiple_token_chunks(
     assert resp.headers["content-type"].startswith("text/event-stream")
 
     events = _parse_sse(resp.text)
-    # token 이벤트는 streaming_tokens 갯수 이상 (검증 차단 분기에서 1회 더 송신 가능).
-    token_count = sum(1 for name, _ in events if name == "token")
-    assert token_count >= len(streaming_tokens)
-    # token content 누적은 streaming_tokens 의 순서를 보존한다.
+    # 사용자 표시 token 에서는 내부 검증용 [#N] 마커를 제거한다.
     token_contents = [_content(data) for name, data in events if name == "token"]
-    assert token_contents[: len(streaming_tokens)] == streaming_tokens
+    assert token_contents == ["답변", "시작"]
     # 후행 이벤트 시퀀스 정합 — sources / verification / meta / done.
     # feature19 — status 이벤트가 추가됐으므로 token/status 를 제외하고 단언한다.
     trailing_names = [name for name, _ in events if name not in ("token", "status")]
@@ -708,11 +705,12 @@ async def test_query_route_stream_core_events_unchanged_with_status(
     # status 를 무시한 (기존 클라이언트 관점) 이벤트 시퀀스.
     non_status = [(name, data) for name, data in events if name != "status"]
     non_status_names = [name for name, _ in non_status]
-    # token 다중 + 후행 4종 — status 추가 전과 동일한 5개 이벤트 종류·순서.
-    assert non_status_names[: len(streaming_tokens)] == ["token"] * len(streaming_tokens)
+    # token 다중 + 후행 4종 — 내부 citation-only token 은 사용자 표시에서 생략된다.
+    display_tokens = ["답변", "시작"]
+    assert non_status_names[: len(display_tokens)] == ["token"] * len(display_tokens)
     assert non_status_names[-4:] == ["sources", "verification", "meta", "done"]
-    # token content 누적은 streaming_tokens 순서를 보존한다.
+    # token content 누적은 citation marker 를 제외한 순서를 보존한다.
     token_contents = [_content(data) for name, data in non_status if name == "token"]
-    assert token_contents[: len(streaming_tokens)] == streaming_tokens
+    assert token_contents[: len(display_tokens)] == display_tokens
     # done 은 빈 객체 {}.
     assert non_status[-1] == ("done", "{}")

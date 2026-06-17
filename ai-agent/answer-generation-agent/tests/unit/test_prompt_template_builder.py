@@ -69,8 +69,8 @@ def test_general_prompt_contains_direct_answer_instruction() -> None:
 
     assert prompt.task_prompt_type == "general"
     assert "일반 질문" in combined_prompt
-    assert "간결한 직접 답변" in combined_prompt
-    assert "근거 출처" in combined_prompt
+    assert "결론을 먼저 제시" in combined_prompt
+    assert "충분히 구체적으로 설명" in combined_prompt
 
 
 def test_unsupported_task_prompt_type_falls_back_to_general_with_warning() -> None:
@@ -88,10 +88,14 @@ def test_common_system_prompt_contains_context_only_answer_rules() -> None:
     prompt = build_prompt_payload(_normalized_result("timeline"))
 
     assert "제공된 context 밖의 사실을 단정하지 않는다" in prompt.system_prompt
-    assert "근거가 부족한 부분은 제한 사항으로 표시한다" in prompt.system_prompt
+    assert "근거가 부족한 부분은 답변 본문에 섞지 말고 제한 사항으로 분리한다" in (
+        prompt.system_prompt
+    )
     assert "context가 존재하면 근거 있는 범위에서 최대한 답변한다" in (
         prompt.system_prompt
     )
+    assert "답변 전체를 확인 불가로 처리하지 않는다" in prompt.system_prompt
+    assert "확인 가능한 내용을 먼저 답하고" in prompt.system_prompt
 
 
 def test_prompt_contains_sentence_level_citation_and_verification_json_instruction() -> None:
@@ -105,6 +109,7 @@ def test_prompt_contains_sentence_level_citation_and_verification_json_instructi
     assert '"sentences"' in combined_prompt
     assert '"citations"' in combined_prompt
     assert '"unsupported_gaps"' in combined_prompt
+    assert "표시용 마커를 쓰지 않는다" in combined_prompt
 
 
 def test_top_context_is_formatted_with_context_id_content_and_source_metadata() -> None:
