@@ -2,11 +2,6 @@
 
 작성자 : 이영훈
 담당 영역 : ai-agent
-"""
-
-from __future__ import annotations
-
-"""
 --------------------------------------------------
 작성자 : 이영훈
 작성목적 : Answer Generation Agent task prompt template builder.
@@ -21,6 +16,8 @@ from __future__ import annotations
 --------------------------------------------------
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,27 +30,27 @@ _TASK_INSTRUCTIONS: dict[TaskPromptType, str] = {
     TaskPromptType.TIMELINE: (
         "Task Prompt Type: timeline\n"
         "목적: 장애 대응.\n"
-        "답변에는 상황 요약, 시간/단계 흐름, 조치 순서, 확인 기준을 포함한다."
+        "답변에는 원인/영향, 시간 흐름, 실제 조치, 확인 기준, 재발 방지를 포함한다."
     ),
     TaskPromptType.STEP_BY_STEP: (
         "Task Prompt Type: step_by_step\n"
         "목적: 운영 가이드.\n"
-        "답변에는 단계별 절차, 선행 조건, 주의사항, 확인 방법을 포함한다."
+        "답변에는 사용자가 바로 수행할 절차, 선행 조건, 주의사항, 확인 방법을 포함한다."
     ),
     TaskPromptType.EVIDENCE_FIRST: (
         "Task Prompt Type: evidence_first\n"
         "목적: 정책·절차.\n"
-        "답변에는 근거 문서/조항 우선, 결론, 적용 조건, 예외/주의사항을 포함한다."
+        "답변에는 결론, 적용 조건, 예외/주의사항, 근거 내용을 사용자 관점으로 설명한다."
     ),
     TaskPromptType.HISTORY_SUMMARY: (
         "Task Prompt Type: history_summary\n"
         "목적: 이력 조회.\n"
-        "답변에는 변경/처리 이력 요약, 날짜/대상/결과, 후속 확인 사항을 포함한다."
+        "답변에는 변경/처리 이력 요약, 날짜/대상/결과, 의미, 후속 확인 사항을 포함한다."
     ),
     TaskPromptType.GENERAL: (
         "Task Prompt Type: general\n"
         "목적: 일반 질문.\n"
-        "답변은 결론을 먼저 제시하고, 근거가 있는 핵심 내용을 충분히 구체적으로 설명한다."
+        "답변은 결론을 먼저 제시하고, 근거가 있는 핵심 내용을 사용자 질문에 맞게 설명한다."
     ),
 }
 
@@ -181,7 +178,9 @@ def _resolve_task_prompt_type(
 def _build_system_prompt() -> str:
     return "\n".join(
         [
-            "You are the Answer Generation Agent in a RAG pipeline.",
+            "You are an Answer Generation Agent in a RAG pipeline.",
+            "역할: 문서 위치를 안내하는 검색 도우미가 아니라, 검색된 운영 문서를 읽고 "
+            "사용자 질문에 직접 답하는 SRE/운영 지원 담당자다.",
             "제공된 context 밖의 사실을 단정하지 않는다.",
             "가능한 한 입력 context 안에서 답변을 구성한다.",
             "근거가 부족한 부분은 답변 본문에 섞지 말고 제한 사항으로 분리한다.",
@@ -189,8 +188,13 @@ def _build_system_prompt() -> str:
             "질문과 관련된 context가 하나 이상 있으면 답변 전체를 확인 불가로 처리하지 않는다.",
             "확인 가능한 내용을 먼저 답하고, context에 실제로 없는 세부 항목만 "
             "제한 사항으로 표시한다.",
-            "답변은 1~2문장으로 끝내지 말고 결론, 근거, 절차/조건/주의사항을 "
-            "포함해 충분히 설명한다.",
+            "첫 문장은 사용자가 바로 실행하거나 판단할 수 있는 결론으로 시작한다.",
+            "문서 제목이나 페이지 존재만 근거로 답하지 말고, context 본문에 있는 "
+            "사실과 절차를 답변 본문에 직접 반영한다.",
+            "금지 표현: '관련 문서를 참조하세요', '문서에서 확인할 수 있습니다', "
+            "'제공할 가능성이 있습니다', '포함하고 있을 수 있습니다'.",
+            "번호 목록은 실제 실행 순서나 타임라인이 명확할 때만 사용하고, "
+            "그 외에는 자연스러운 문단과 짧은 bullet을 사용한다.",
             "모든 핵심 문장은 sentence-level citation을 포함해야 한다.",
             "citation은 반드시 제공된 context_id만 참조한다.",
         ]
@@ -217,6 +221,8 @@ def _structured_output_instruction() -> str:
         "  ],\n"
         '  "unsupported_gaps": ["context로 확인할 수 없는 제한 사항"]\n'
         "}\n"
+        "answer는 사용자에게 그대로 보여줄 최종 답변이다. 문서 위치 안내가 아니라 "
+        "context 본문에서 추출한 조치/원인/조건/확인 기준을 직접 서술한다.\n"
         "answer와 sentences.text에는 [#1] 같은 표시용 마커를 쓰지 않는다.\n"
         "sentences의 citations는 Top context의 context_id만 사용한다.\n"
         "unsupported_gaps에는 답변한 내용을 반복하지 말고, context에 없는 세부 정보만 넣는다."
@@ -231,7 +237,8 @@ def _build_user_prompt(
     has_context: bool,
 ) -> str:
     context_instruction = (
-        "아래 Top context만 근거로 사용한다."
+        "아래 Top context만 근거로 사용한다. title/source_url은 출처 식별용 메타데이터이며, "
+        "답변 근거는 content 본문에서 우선 추출한다."
         if has_context
         else "사용 가능한 context가 없다. 답변 가능 범위를 제한 사항으로 표시한다."
     )

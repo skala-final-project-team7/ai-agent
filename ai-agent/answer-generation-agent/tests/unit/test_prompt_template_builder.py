@@ -22,9 +22,9 @@ def test_timeline_prompt_contains_incident_timeline_and_action_order() -> None:
 
     assert prompt.task_prompt_type == "timeline"
     assert "장애 대응" in combined_prompt
-    assert "상황 요약" in combined_prompt
-    assert "시간/단계 흐름" in combined_prompt
-    assert "조치 순서" in combined_prompt
+    assert "원인/영향" in combined_prompt
+    assert "실제 조치" in combined_prompt
+    assert "재발 방지" in combined_prompt
 
 
 def test_step_by_step_prompt_contains_procedure_and_cautions() -> None:
@@ -34,7 +34,7 @@ def test_step_by_step_prompt_contains_procedure_and_cautions() -> None:
 
     assert prompt.task_prompt_type == "step_by_step"
     assert "운영 가이드" in combined_prompt
-    assert "단계별 절차" in combined_prompt
+    assert "바로 수행할 절차" in combined_prompt
     assert "주의사항" in combined_prompt
     assert "확인 방법" in combined_prompt
 
@@ -46,8 +46,8 @@ def test_evidence_first_prompt_contains_policy_and_evidence_first_instruction() 
 
     assert prompt.task_prompt_type == "evidence_first"
     assert "정책·절차" in combined_prompt
-    assert "근거 문서/조항 우선" in combined_prompt
     assert "결론" in combined_prompt
+    assert "적용 조건" in combined_prompt
     assert "예외/주의사항" in combined_prompt
 
 
@@ -70,7 +70,7 @@ def test_general_prompt_contains_direct_answer_instruction() -> None:
     assert prompt.task_prompt_type == "general"
     assert "일반 질문" in combined_prompt
     assert "결론을 먼저 제시" in combined_prompt
-    assert "충분히 구체적으로 설명" in combined_prompt
+    assert "사용자 질문에 맞게 설명" in combined_prompt
 
 
 def test_unsupported_task_prompt_type_falls_back_to_general_with_warning() -> None:
@@ -87,6 +87,7 @@ def test_unsupported_task_prompt_type_falls_back_to_general_with_warning() -> No
 def test_common_system_prompt_contains_context_only_answer_rules() -> None:
     prompt = build_prompt_payload(_normalized_result("timeline"))
 
+    assert "사용자 질문에 직접 답하는 SRE/운영 지원 담당자" in prompt.system_prompt
     assert "제공된 context 밖의 사실을 단정하지 않는다" in prompt.system_prompt
     assert "근거가 부족한 부분은 답변 본문에 섞지 말고 제한 사항으로 분리한다" in (
         prompt.system_prompt
@@ -96,6 +97,13 @@ def test_common_system_prompt_contains_context_only_answer_rules() -> None:
     )
     assert "답변 전체를 확인 불가로 처리하지 않는다" in prompt.system_prompt
     assert "확인 가능한 내용을 먼저 답하고" in prompt.system_prompt
+    assert "context 본문에 있는 사실과 절차를 답변 본문에 직접 반영" in (
+        prompt.system_prompt
+    )
+    assert "문서에서 확인할 수 있습니다" in prompt.system_prompt
+    assert "번호 목록은 실제 실행 순서나 타임라인이 명확할 때만 사용" in (
+        prompt.system_prompt
+    )
 
 
 def test_prompt_contains_sentence_level_citation_and_verification_json_instruction() -> None:
@@ -109,6 +117,8 @@ def test_prompt_contains_sentence_level_citation_and_verification_json_instructi
     assert '"sentences"' in combined_prompt
     assert '"citations"' in combined_prompt
     assert '"unsupported_gaps"' in combined_prompt
+    assert "문서 위치 안내가 아니라" in combined_prompt
+    assert "조치/원인/조건/확인 기준을 직접 서술" in combined_prompt
     assert "표시용 마커를 쓰지 않는다" in combined_prompt
 
 
@@ -124,6 +134,8 @@ def test_top_context_is_formatted_with_context_id_content_and_source_metadata() 
     assert "https://example.invalid/pages/ctx-001" in user_prompt
     assert "score=0.7" in user_prompt
     assert "rerank_score=0.9" in user_prompt
+    assert "title/source_url은 출처 식별용 메타데이터" in user_prompt
+    assert "답변 근거는 content 본문에서 우선 추출" in user_prompt
 
 
 def test_empty_context_builds_safe_insufficient_context_prompt() -> None:
@@ -136,7 +148,11 @@ def test_empty_context_builds_safe_insufficient_context_prompt() -> None:
 
 def test_prompt_uses_normalized_top_contexts_without_copying_all_search_results() -> None:
     contexts = [
-        _context(f"ctx-{index}", content=f"Synthetic context {index}.", rerank_score=1.0 - index / 10)
+        _context(
+            f"ctx-{index}",
+            content=f"Synthetic context {index}.",
+            rerank_score=1.0 - index / 10,
+        )
         for index in range(1, 8)
     ]
     prompt = build_prompt_payload(_normalized_result("timeline", contexts=contexts))
