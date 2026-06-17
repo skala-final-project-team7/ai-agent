@@ -27,6 +27,7 @@ from data_sync_agent.schemas.snapshots import (
     PageSnapshotItem,
     build_page_key,
 )
+from data_sync_agent.schemas.sync_logs import SyncLogRecord, SyncLogStatus
 
 __all__ = [
     "AttachmentProcessingStatus",
@@ -43,6 +44,8 @@ __all__ = [
     "PageSnapshotItem",
     "SyncJob",
     "SyncJobStatus",
+    "SyncLogRecord",
+    "SyncLogStatus",
     "SyncReport",
     "SyncReportCounts",
     "SyncReportStatus",

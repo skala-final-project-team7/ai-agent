@@ -13,8 +13,8 @@ import pytest
 
 from data_sync_agent.config import DataSyncConfig
 from data_sync_agent.schemas import (
-    ChangeType,
     ChangedDocument,
+    ChangeType,
     DeletedItem,
     DeleteType,
     FailedItem,
@@ -26,6 +26,8 @@ from data_sync_agent.schemas import (
     PageSnapshotItem,
     SyncJob,
     SyncJobStatus,
+    SyncLogRecord,
+    SyncLogStatus,
     SyncReport,
     SyncReportCounts,
     SyncReportStatus,
@@ -272,3 +274,36 @@ def test_sync_report_and_failed_item_schemas_validate_counts() -> None:
 
     with pytest.raises(ValueError, match="failed_items"):
         SyncReportCounts(failed_items=-1)
+
+
+def test_sync_log_record_exports_admin_document_contract() -> None:
+    record = SyncLogRecord(
+        sync_id=_runtime_value("sync"),
+        job_id="job-123",
+        mode="delta",
+        status=SyncLogStatus.COMPLETED,
+        updated_pages=3,
+        deleted_pages=1,
+        failed_pages=0,
+        started_at="2026-06-17T00:00:00Z",
+        completed_at="2026-06-17T00:00:05Z",
+        duration_seconds=5,
+        raw_status="completed",
+    )
+
+    document = record.to_admin_document()
+
+    assert document["syncId"] == record.sync_id
+    assert document["jobId"] == "job-123"
+    assert document["status"] == "COMPLETED"
+    assert document["updatedPages"] == 3
+    assert document["deletedPages"] == 1
+    assert document["duration"] == 5
+    assert document["completedAt"] == "2026-06-17T00:00:05Z"
+
+    with pytest.raises(ValueError, match="updated_pages"):
+        SyncLogRecord(
+            sync_id=_runtime_value("sync"),
+            status=SyncLogStatus.COMPLETED,
+            updated_pages=-1,
+        )
