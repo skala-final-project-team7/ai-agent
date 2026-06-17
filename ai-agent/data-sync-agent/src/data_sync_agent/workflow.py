@@ -526,9 +526,11 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _safe_error_message(message: str, access_token: str) -> str:
+    safe_message = (
+        message.replace(access_token, "<redacted>") if access_token else message
+    )
     return (
-        message.replace(access_token, "<redacted>")
-        .replace("Authorization", "<redacted-header>")
+        safe_message.replace("Authorization", "<redacted-header>")
         .replace("Bearer", "<redacted-auth-scheme>")
         .replace("access_token", "<redacted-token-field>")
     )

@@ -38,6 +38,8 @@ class DataSyncConfig:
         request_delay_seconds: API 요청 사이 지연 시간.
         max_retries: retryable 요청의 최대 재시도 횟수.
         timeout_seconds: 외부 API 요청 timeout.
+        use_admin_key: Admin Key 경로를 사용할지 여부. True이면 admin API Token Basic 인증과
+            site URL을 사용한다(api-spec v2.6.1).
 
     Raises:
         ValueError: 필수값이 비어 있거나 retry 설정이 유효하지 않은 경우.
@@ -50,6 +52,10 @@ class DataSyncConfig:
     request_delay_seconds: float = 0.3
     max_retries: int = 3
     timeout_seconds: int = 20
+    use_admin_key: bool = False
+    site_url: str = ""
+    admin_email: str = ""
+    admin_api_token: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         if self.output_dir == "":
@@ -64,8 +70,15 @@ class DataSyncConfig:
         """필수 config와 retry 설정의 최소 유효성을 검증한다."""
         if not self.cloud_id:
             raise ValueError("cloud_id is required")
-        if not self.access_token:
+        if not self.access_token and not self.use_admin_key:
             raise ValueError("access_token is required")
+        if self.use_admin_key:
+            if not self.site_url:
+                raise ValueError("site_url is required when use_admin_key is true")
+            if not self.admin_email:
+                raise ValueError("admin_email is required when use_admin_key is true")
+            if not self.admin_api_token:
+                raise ValueError("admin_api_token is required when use_admin_key is true")
         if not str(self.output_dir):
             raise ValueError("output_dir is required")
         if not str(self.previous_snapshot):
@@ -87,4 +100,8 @@ class DataSyncConfig:
             "request_delay_seconds": self.request_delay_seconds,
             "max_retries": self.max_retries,
             "timeout_seconds": self.timeout_seconds,
+            "use_admin_key": self.use_admin_key,
+            "site_url": self.site_url,
+            "admin_email": self.admin_email,
+            "admin_api_token": "<redacted>",
         }

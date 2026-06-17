@@ -45,6 +45,7 @@ def _client(
     *,
     max_retries: int = 3,
     access_token: str | None = None,
+    use_admin_key: bool = False,
 ) -> tuple[ConfluenceMetadataClient, FakeTransport, str, str]:
     cloud_id = _runtime_value("cloud")
     resolved_access_token = access_token or _runtime_value("runtime-token")
@@ -55,6 +56,10 @@ def _client(
         previous_snapshot=tmp_path / "snapshots" / "previous.json",
         max_retries=max_retries,
         request_delay_seconds=0,
+        use_admin_key=use_admin_key,
+        site_url="https://example.atlassian.net" if use_admin_key else "",
+        admin_email="admin@example.com" if use_admin_key else "",
+        admin_api_token="admin-api-token" if use_admin_key else "",
     )
     transport = FakeTransport(responses)
     return (
@@ -99,6 +104,19 @@ def test_authorization_header_is_sent_but_redacted_from_error_string(
     assert transport.requests[0].headers["Authorization"] == f"Bearer {access_token}"
     assert access_token not in str(raised_error.value)
     assert "Authorization" not in str(raised_error.value)
+
+
+def test_admin_key_mode_uses_basic_auth_and_site_url(tmp_path: Path) -> None:
+    client, transport, _, _ = _client(
+        tmp_path,
+        [ConfluenceResponse(status_code=200, json_body={"results": [], "_links": {}})],
+        use_admin_key=True,
+    )
+
+    assert client.list_spaces() == []
+    assert transport.requests[0].headers["Authorization"].startswith("Basic ")
+    assert transport.requests[0].headers["Atl-Confluence-With-Admin-Key"] == "true"
+    assert transport.requests[0].url.startswith("https://example.atlassian.net/wiki/api/v2")
 
 
 def test_list_spaces_follows_next_pagination(tmp_path: Path) -> None:

@@ -83,6 +83,24 @@ def test_config_accepts_external_inputs_and_redacts_token(tmp_path: Path) -> Non
     assert access_token not in str(safe_dict)
 
 
+def test_admin_key_config_allows_empty_oauth_token(tmp_path: Path) -> None:
+    config = DataSyncConfig(
+        cloud_id=_runtime_value("cloud"),
+        access_token="",
+        output_dir=tmp_path,
+        previous_snapshot=tmp_path / "previous.json",
+        use_admin_key=True,
+        site_url="https://example.atlassian.net",
+        admin_email="admin@example.com",
+        admin_api_token="admin-api-token",
+    )
+
+    assert config.use_admin_key is True
+    assert config.access_token == ""
+    safe_dict = config.to_safe_dict()
+    assert safe_dict["admin_api_token"] == "<redacted>"
+
+
 @pytest.mark.parametrize(
     ("field_name", "kwargs", "match"),
     [

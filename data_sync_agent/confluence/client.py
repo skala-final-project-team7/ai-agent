@@ -327,9 +327,11 @@ class ConfluenceMetadataClient:
         raw_message = response.json_body.get("message")
         if not isinstance(raw_message, str) or not raw_message:
             return "Confluence API returned an error"
+        safe_message = raw_message
+        if self.config.access_token:
+            safe_message = safe_message.replace(self.config.access_token, "<redacted>")
         return (
-            raw_message.replace(self.config.access_token, "<redacted>")
-            .replace("Authorization", "<redacted-header>")
+            safe_message.replace("Authorization", "<redacted-header>")
             .replace("Bearer", "<redacted-auth-scheme>")
         )
 

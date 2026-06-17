@@ -70,7 +70,7 @@ class DataSyncConfig:
         """필수 config와 retry 설정의 최소 유효성을 검증한다."""
         if not self.cloud_id:
             raise ValueError("cloud_id is required")
-        if not self.access_token:
+        if not self.access_token and not self.use_admin_key:
             raise ValueError("access_token is required")
         if self.use_admin_key:
             if not self.site_url:
