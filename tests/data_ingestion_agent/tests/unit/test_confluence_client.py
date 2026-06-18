@@ -144,6 +144,35 @@ def test_list_spaces_follows_next_pagination(tmp_path: Path) -> None:
     assert transport.requests[1].url.endswith("/spaces?cursor=next-cursor")
 
 
+def test_oauth_pagination_preserves_gateway_prefix_for_real_next_links(
+    tmp_path: Path,
+) -> None:
+    client, transport, cloud_id, _ = _client(
+        tmp_path,
+        [
+            ConfluenceResponse(
+                status_code=200,
+                json_body={
+                    "results": [{"id": "space-1"}],
+                    "_links": {"next": "/wiki/api/v2/spaces?cursor=next-cursor"},
+                },
+            ),
+            ConfluenceResponse(
+                status_code=200,
+                json_body={"results": [{"id": "space-2"}], "_links": {}},
+            ),
+        ],
+    )
+
+    spaces = client.list_spaces()
+
+    assert spaces == [{"id": "space-1"}, {"id": "space-2"}]
+    assert transport.requests[1].url == (
+        f"https://api.atlassian.com/ex/confluence/{cloud_id}"
+        "/wiki/api/v2/spaces?cursor=next-cursor"
+    )
+
+
 def test_list_page_descendants_follows_next_pagination(tmp_path: Path) -> None:
     homepage_id = _runtime_value("homepage")
     client, transport, _, _ = _client(
@@ -168,6 +197,36 @@ def test_list_page_descendants_follows_next_pagination(tmp_path: Path) -> None:
     assert descendants == [{"id": "page-1"}, {"id": "page-2"}]
     assert transport.requests[0].url.endswith(f"/pages/{homepage_id}/descendants?limit=25")
     assert transport.requests[1].url.endswith(f"/pages/{homepage_id}/descendants?cursor=2")
+
+
+def test_list_space_pages_follows_next_pagination_and_requests_storage(
+    tmp_path: Path,
+) -> None:
+    space_id = _runtime_value("space")
+    client, transport, _, _ = _client(
+        tmp_path,
+        [
+            ConfluenceResponse(
+                status_code=200,
+                json_body={
+                    "results": [{"id": "page-1"}],
+                    "_links": {"next": f"/spaces/{space_id}/pages?cursor=2"},
+                },
+            ),
+            ConfluenceResponse(
+                status_code=200,
+                json_body={"results": [{"id": "page-2"}], "_links": {}},
+            ),
+        ],
+    )
+
+    pages = client.list_space_pages(space_id)
+
+    assert pages == [{"id": "page-1"}, {"id": "page-2"}]
+    assert transport.requests[0].url.endswith(
+        f"/spaces/{space_id}/pages?limit=25&body-format=storage"
+    )
+    assert transport.requests[1].url.endswith(f"/spaces/{space_id}/pages?cursor=2")
 
 
 def test_get_page_detail_requests_storage_body_and_version(

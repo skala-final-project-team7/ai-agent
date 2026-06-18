@@ -26,11 +26,11 @@ class FakeConfluenceClient:
         self,
         *,
         spaces: list[dict],
-        descendants_by_homepage: dict[str, list[dict]],
+        pages_by_space: dict[str, list[dict]],
         details_by_page: dict[str, dict | Exception],
     ) -> None:
         self.spaces = spaces
-        self.descendants_by_homepage = descendants_by_homepage
+        self.pages_by_space = pages_by_space
         self.details_by_page = details_by_page
         self.calls: list[str] = []
 
@@ -40,7 +40,11 @@ class FakeConfluenceClient:
 
     def list_page_descendants(self, homepage_id: str) -> list[dict]:
         self.calls.append(f"list_page_descendants:{homepage_id}")
-        return self.descendants_by_homepage.get(homepage_id, [])
+        return []
+
+    def list_space_pages(self, space_id: str) -> list[dict]:
+        self.calls.append(f"list_space_pages:{space_id}")
+        return self.pages_by_space.get(space_id, [])
 
     def get_page_detail(self, page_id: str) -> dict:
         self.calls.append(f"get_page_detail:{page_id}")
@@ -96,7 +100,7 @@ def _page_detail(page_id: str = "page-001") -> dict:
 def test_workflow_processes_space_pages_and_writes_outputs(tmp_path: Path) -> None:
     client = FakeConfluenceClient(
         spaces=[_space()],
-        descendants_by_homepage={"home-001": [_page_ref()]},
+        pages_by_space={"space-001": [_page_ref()]},
         details_by_page={"page-001": _page_detail()},
     )
 
@@ -104,7 +108,7 @@ def test_workflow_processes_space_pages_and_writes_outputs(tmp_path: Path) -> No
 
     assert client.calls == [
         "list_spaces",
-        "list_page_descendants:home-001",
+        "list_space_pages:space-001",
         "get_page_detail:page-001",
     ]
     assert result.report.status == "completed"
@@ -122,7 +126,7 @@ def test_workflow_records_failed_item_and_finishes_partial_success(
 ) -> None:
     client = FakeConfluenceClient(
         spaces=[_space()],
-        descendants_by_homepage={"home-001": [_page_ref("page-001"), _page_ref("page-002")]},
+        pages_by_space={"space-001": [_page_ref("page-001"), _page_ref("page-002")]},
         details_by_page={
             "page-001": _page_detail("page-001"),
             "page-002": ConfluenceApiError(
@@ -148,7 +152,7 @@ def test_workflow_records_failed_item_and_finishes_partial_success(
 def test_workflow_marks_job_failed_when_list_spaces_fails(tmp_path: Path) -> None:
     client = FakeConfluenceClient(
         spaces=[],
-        descendants_by_homepage={},
+        pages_by_space={},
         details_by_page={},
     )
 
@@ -177,7 +181,7 @@ def test_workflow_handles_empty_spaces(tmp_path: Path) -> None:
         config=_config(tmp_path),
         client=FakeConfluenceClient(
             spaces=[],
-            descendants_by_homepage={},
+            pages_by_space={},
             details_by_page={},
         ),
     )
@@ -194,7 +198,7 @@ def test_workflow_handles_empty_pages(tmp_path: Path) -> None:
         config=_config(tmp_path),
         client=FakeConfluenceClient(
             spaces=[_space()],
-            descendants_by_homepage={"home-001": []},
+            pages_by_space={"space-001": []},
             details_by_page={},
         ),
     )
@@ -212,7 +216,7 @@ def test_cli_builds_config_writes_files_and_redacts_token(
     access_token = _runtime_value("token")
     client = FakeConfluenceClient(
         spaces=[_space()],
-        descendants_by_homepage={"home-001": [_page_ref()]},
+        pages_by_space={"space-001": [_page_ref()]},
         details_by_page={"page-001": _page_detail()},
     )
 
@@ -251,7 +255,7 @@ def test_langgraph_optional_fallback_is_explicit(tmp_path: Path) -> None:
         config=_config(tmp_path),
         client=FakeConfluenceClient(
             spaces=[],
-            descendants_by_homepage={},
+            pages_by_space={},
             details_by_page={},
         ),
     )

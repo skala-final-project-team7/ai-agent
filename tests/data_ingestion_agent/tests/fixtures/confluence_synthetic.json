@@ -55,6 +55,45 @@
       }
     ]
   },
+  "pages_by_space": {
+    "space-eng": [
+      {
+        "id": "page-runbook",
+        "parentId": "home-eng",
+        "depth": 1,
+        "position": 0
+      },
+      {
+        "id": "page-macro-attachment",
+        "parentId": "home-eng",
+        "depth": 1,
+        "position": 1
+      },
+      {
+        "id": "page-denied",
+        "parentId": "home-eng",
+        "depth": 1,
+        "position": 2
+      }
+    ],
+    "space-empty": [],
+    "space-missing-home": [
+      {
+        "id": "page-missing-home",
+        "parentId": null,
+        "depth": 0,
+        "position": 0
+      }
+    ],
+    "space-ops": [
+      {
+        "id": "page-ops",
+        "parentId": "home-ops",
+        "depth": 1,
+        "position": 0
+      }
+    ]
+  },
   "page_details": {
     "page-runbook": {
       "id": "page-runbook",
@@ -109,6 +148,24 @@
       "_links": {
         "webui": "/wiki/spaces/OPS/pages/page-ops/Synthetic+Operations"
       }
+    },
+    "page-missing-home": {
+      "id": "page-missing-home",
+      "title": "Synthetic Missing Homepage Page",
+      "status": "current",
+      "body": {
+        "storage": {
+          "value": "<p>Page in a space without homepageId should still be collected.</p>"
+        }
+      },
+      "createdAt": "2026-05-14T02:40:00Z",
+      "version": {
+        "number": 1,
+        "createdAt": "2026-05-14T02:45:00Z"
+      },
+      "_links": {
+        "webui": "/wiki/spaces/MISS/pages/page-missing-home/Synthetic+Missing+Homepage"
+      }
     }
   },
   "page_detail_failures": {
@@ -132,6 +189,22 @@
     ],
     "descendants_by_homepage": {
       "home-boundary": [
+        {
+          "id": "page-empty-body",
+          "parentId": "home-boundary",
+          "depth": 1,
+          "position": 0
+        },
+        {
+          "id": "page-long-body",
+          "parentId": "home-boundary",
+          "depth": 1,
+          "position": 1
+        }
+      ]
+    },
+    "pages_by_space": {
+      "space-boundary": [
         {
           "id": "page-empty-body",
           "parentId": "home-boundary",

@@ -144,6 +144,35 @@ def test_list_spaces_follows_next_pagination(tmp_path: Path) -> None:
     assert transport.requests[1].url.endswith("/spaces?cursor=next-cursor")
 
 
+def test_oauth_pagination_preserves_gateway_prefix_for_real_next_links(
+    tmp_path: Path,
+) -> None:
+    client, transport, cloud_id, _ = _client(
+        tmp_path,
+        [
+            ConfluenceResponse(
+                status_code=200,
+                json_body={
+                    "results": [{"id": "space-1", "key": "ENG"}],
+                    "_links": {"next": "/wiki/api/v2/spaces?cursor=next-cursor"},
+                },
+            ),
+            ConfluenceResponse(
+                status_code=200,
+                json_body={"results": [{"id": "space-2", "key": "OPS"}]},
+            ),
+        ],
+    )
+
+    spaces = client.list_spaces()
+
+    assert [space["id"] for space in spaces] == ["space-1", "space-2"]
+    assert transport.requests[1].url == (
+        f"https://api.atlassian.com/ex/confluence/{cloud_id}"
+        "/wiki/api/v2/spaces?cursor=next-cursor"
+    )
+
+
 def test_list_space_pages_follows_next_pagination_and_requests_storage(
     tmp_path: Path,
 ) -> None:

@@ -23,11 +23,13 @@
 --------------------------------------------------
 """
 
+import os
 import shutil
 import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Protocol
 
 from app.adapters.atlassian import normalize_webui_link
@@ -39,6 +41,11 @@ from app.ingestion.workers.publisher import QueuePublisher
 from app.schemas.page_object import PageObject
 from app.storage.qdrant_client import QdrantPoolStore
 from app.storage.raw_store import RawPageStore
+
+_SNAPSHOT_BASELINE_BLOCKING_STAGES = frozenset(
+    {"list_spaces", "fetch_page_metadata", "diff_snapshots"}
+)
+_RETRYABLE_DETAIL_STAGES = frozenset({"fetch_page_detail", "transform_changed_html"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +243,10 @@ def run_delta_sync(
             snapshot_repository=snapshot_repository,
             force_sequential=force_sequential,
         )
+        _promote_current_snapshot_to_baseline(
+            result=result,
+            previous_snapshot_path=request.previous_snapshot_path,
+        )
     finally:
         shutil.rmtree(output_dir, ignore_errors=True)
 
@@ -299,6 +310,55 @@ def _build_sync_config(request: DeltaSyncRequest, *, output_dir: str) -> Any:
         admin_email=request.admin_email or "",
         admin_api_token=request.admin_api_token or "",
     )
+
+
+def _promote_current_snapshot_to_baseline(
+    *,
+    result: Any,
+    previous_snapshot_path: str,
+) -> bool:
+    """current snapshot을 다음 delta의 previous baseline으로 승격한다."""
+    if not previous_snapshot_path:
+        return False
+    if not _should_promote_current_snapshot(getattr(result, "failed_items", [])):
+        return False
+
+    output_paths = getattr(result, "output_paths", None)
+    if not isinstance(output_paths, dict):
+        return False
+    current_snapshot = output_paths.get("current_snapshot")
+    if not current_snapshot:
+        return False
+
+    source_path = Path(str(current_snapshot))
+    if not source_path.exists():
+        return False
+
+    target_path = Path(previous_snapshot_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = target_path.with_name(f".{target_path.name}.{time.time_ns()}.tmp")
+    try:
+        shutil.copyfile(source_path, temp_path)
+        os.replace(temp_path, target_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    return True
+
+
+def _should_promote_current_snapshot(failed_items: list[Any]) -> bool:
+    for item in failed_items:
+        stage = _failed_item_stage(item)
+        if stage in _SNAPSHOT_BASELINE_BLOCKING_STAGES:
+            return False
+        if stage in _RETRYABLE_DETAIL_STAGES and bool(getattr(item, "retryable", False)):
+            return False
+    return True
+
+
+def _failed_item_stage(item: Any) -> str:
+    raw_stage = getattr(item, "stage", "")
+    value = getattr(raw_stage, "value", raw_stage)
+    return str(value).lower()
 
 
 def _default_delta_workflow_runner() -> _DeltaSyncWorkflowRunner:

@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from data_sync_agent.config import DataSyncConfig
@@ -290,8 +290,15 @@ class ConfluenceMetadataClient:
             if path_with_query.startswith("/rest/api/"):
                 return f"{site_url}/wiki{path_with_query}"
             return f"{self.base_url}{path_with_query}"
-        if path_with_query.startswith("/wiki/api/v2/"):
-            return urljoin(CONFLUENCE_API_ORIGIN, path_with_query)
+        if path_with_query.startswith("/wiki/api/v2/") or path_with_query.startswith(
+            "/wiki/rest/api/"
+        ):
+            return f"{CONFLUENCE_API_ORIGIN}/ex/confluence/{self.config.cloud_id}{path_with_query}"
+        if path_with_query.startswith("/rest/api/"):
+            return (
+                f"{CONFLUENCE_API_ORIGIN}/ex/confluence/{self.config.cloud_id}/wiki"
+                f"{path_with_query}"
+            )
         return f"{self.base_url}{path_with_query}"
 
     @staticmethod

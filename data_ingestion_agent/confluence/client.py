@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from data_ingestion_agent.config import DataIngestionConfig
@@ -175,6 +175,15 @@ class ConfluenceClient:
         return self._get_paginated(
             f"/pages/{homepage_id}/descendants",
             {"limit": DEFAULT_PAGE_LIMIT},
+        )
+
+    def list_space_pages(self, space_id: str) -> list[dict[str, Any]]:
+        """Space 내 Page metadata 목록을 pagination 처리해 반환한다."""
+        if not space_id:
+            raise ValueError("space_id is required")
+        return self._get_paginated(
+            f"/spaces/{space_id}/pages",
+            {"limit": DEFAULT_PAGE_LIMIT, "body-format": "storage"},
         )
 
     def get_page_detail(self, page_id: str) -> dict[str, Any]:
@@ -326,7 +335,7 @@ class ConfluenceClient:
         if path_with_query.startswith("/wiki/api/v2/") or path_with_query.startswith(
             "/wiki/rest/api/"
         ):
-            return urljoin(CONFLUENCE_API_ORIGIN, path_with_query)
+            return f"{CONFLUENCE_API_ORIGIN}/ex/confluence/{self.config.cloud_id}{path_with_query}"
         if path_with_query.startswith("/rest/api/"):
             return (
                 f"{CONFLUENCE_API_ORIGIN}/ex/confluence/{self.config.cloud_id}/wiki"

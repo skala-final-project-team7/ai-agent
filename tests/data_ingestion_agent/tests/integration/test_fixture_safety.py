@@ -34,6 +34,9 @@ class FixtureConfluenceClient:
     def list_page_descendants(self, homepage_id: str) -> list[dict]:
         return self.fixture["descendants_by_homepage"].get(homepage_id, [])
 
+    def list_space_pages(self, space_id: str) -> list[dict]:
+        return self.fixture.get("pages_by_space", {}).get(space_id, [])
+
     def get_page_detail(self, page_id: str) -> dict:
         failure = self.fixture["page_detail_failures"].get(page_id)
         if failure:
@@ -112,15 +115,15 @@ def test_fixture_full_workflow_writes_expected_files_and_shapes(tmp_path: Path) 
     failed_items = _read_jsonl(failed_items_path)
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
-    assert len(documents) == 3
-    assert len(failed_items) == 2
+    assert len(documents) == 4
+    assert len(failed_items) == 1
     assert report["status"] == "completed_with_errors"
     assert report["counts"] == {
         "spaces": 4,
-        "page_refs": 4,
-        "pages_fetched": 3,
-        "documents_written": 3,
-        "failed_items": 2,
+        "page_refs": 5,
+        "pages_fetched": 4,
+        "documents_written": 4,
+        "failed_items": 1,
     }
 
     required_document_keys = {
@@ -179,7 +182,7 @@ def test_partial_failure_fixture_records_failed_page(tmp_path: Path) -> None:
 
     assert failed_by_id["page-denied"]["stage"] == "fetch_page_detail"
     assert failed_by_id["page-denied"]["error_type"] == "permission_failure"
-    assert failed_by_id["space-missing-home"]["stage"] == "collect_page_tree"
+    assert "space-missing-home" not in failed_by_id
 
 
 def test_empty_space_and_empty_page_fixture_do_not_raise(tmp_path: Path) -> None:
@@ -190,8 +193,8 @@ def test_empty_space_and_empty_page_fixture_do_not_raise(tmp_path: Path) -> None
     )
 
     assert result.report.counts.spaces == 4
-    assert result.report.counts.page_refs == 4
-    assert result.report.counts.documents_written == 3
+    assert result.report.counts.page_refs == 5
+    assert result.report.counts.documents_written == 4
 
 
 def test_outputs_do_not_contain_runtime_credential_or_auth_markers(tmp_path: Path) -> None:
@@ -235,7 +238,7 @@ def test_cli_fixture_run_redacts_runtime_credential_and_writes_outputs(
     combined_output = captured.out + captured.err
 
     assert exit_code == 0
-    assert "documents_written=3" in captured.out
+    assert "documents_written=4" in captured.out
     assert runtime_credential not in combined_output
     assert "Authorization" not in combined_output
     assert (tmp_path / "processed" / "documents.jsonl").exists()

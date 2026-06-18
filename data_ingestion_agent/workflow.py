@@ -53,6 +53,9 @@ class DataIngestionClient(Protocol):
     def list_page_descendants(self, homepage_id: str) -> list[dict[str, Any]]:
         """Space homepage 기준 descendants page refs를 반환한다."""
 
+    def list_space_pages(self, space_id: str) -> list[dict[str, Any]]:
+        """Space 기준 page refs를 반환한다."""
+
     def get_page_detail(self, page_id: str) -> dict[str, Any]:
         """Page 상세 응답을 반환한다."""
 
@@ -184,19 +187,23 @@ class DataIngestionWorkflowRunner:
         self,
         state: DataIngestionWorkflowState,
     ) -> DataIngestionWorkflowState:
-        """Space homepageId 기준 descendants Page Tree 수집 node."""
+        """Space 기준 Page 목록 수집 node.
+
+        Confluence homepage descendants API는 homepage 밖에 있는 페이지나 homepageId가
+        없는 space를 누락할 수 있다. Full crawl은 delta sync와 같은 space page listing을
+        기준으로 삼아 동일한 수집 범위를 보장한다.
+        """
         for space_payload in state.spaces:
             space = _space_info_from_payload(space_payload)
-            homepage_id = space_payload.get("homepageId")
-            if not homepage_id:
+            if not space.space_id:
                 state.failed_items.append(
                     build_failed_item(
                         job_id=state.job_id,
                         stage=FailedItemStage.COLLECT_PAGE_TREE,
                         item_type=FailedItemType.SPACE,
                         item_id=space.space_id,
-                        error_type="missing_homepage_id",
-                        error_message="Space homepageId is required for MVP crawl.",
+                        error_type="invalid_space_id",
+                        error_message="Space id is required for full crawl.",
                         retryable=False,
                         attempt_count=1,
                     )
@@ -204,7 +211,7 @@ class DataIngestionWorkflowRunner:
                 continue
 
             try:
-                page_refs = state.client.list_page_descendants(str(homepage_id))
+                page_refs = state.client.list_space_pages(space.space_id)
             except Exception as error:
                 state.failed_items.append(
                     _failed_item_from_error(
