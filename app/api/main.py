@@ -62,6 +62,58 @@ from app.pipeline.query_graph import (
 )
 
 
+def _patch_prometheus_included_router_route_names() -> None:
+    """prometheus-fastapi-instrumentator route matching for FastAPI included routers.
+
+    FastAPI 0.137 keeps included APIRouter objects as private ``_IncludedRouter``
+    entries. instrumentator 8.0.0 still expects every matching route to expose
+    ``.path``, so requests handled by included routers can fail before reaching
+    the endpoint. Patch only the route-name helper and keep metric collection
+    behavior unchanged.
+    """
+    from fastapi.routing import _IncludedRouter
+    from prometheus_fastapi_instrumentator import routing
+    from starlette.routing import Match, Mount
+
+    if getattr(routing._get_route_name, "_lina_included_router_compat", False):
+        return
+
+    def _included_router_path(route: _IncludedRouter, scope: dict) -> tuple[str | None, dict]:
+        match, child_scope, selected_route, route_context = route._match(scope)
+        if match == Match.NONE:
+            return None, {}
+        path = getattr(route_context, "path", None) or getattr(selected_route, "path", None)
+        return path, child_scope
+
+    def _get_route_name(scope: dict, routes: list, route_name: str | None = None) -> str | None:
+        for route in routes:
+            match, child_scope = route.matches(scope)
+            route_path = getattr(route, "path", None)
+            if isinstance(route, _IncludedRouter):
+                included_path, included_child_scope = _included_router_path(route, scope)
+                if included_path is not None:
+                    route_path = included_path
+                    child_scope = included_child_scope
+            if match == Match.FULL:
+                if route_path is None:
+                    return route_name
+                route_name = route_path
+                child_scope = {**scope, **child_scope}
+                if isinstance(route, Mount) and route.routes:
+                    child_route_name = _get_route_name(child_scope, route.routes, route_name)
+                    if child_route_name is None:
+                        route_name = None
+                    else:
+                        route_name += child_route_name
+                return route_name
+            if match == Match.PARTIAL and route_name is None:
+                route_name = route_path
+        return None
+
+    _get_route_name._lina_included_router_compat = True  # type: ignore[attr-defined]
+    routing._get_route_name = _get_route_name
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """앱 시작 시 deps + 그래프 컴파일을 한 번 수행해 app.state에 보관한다.
@@ -112,6 +164,8 @@ def create_app() -> FastAPI:
     app.include_router(query_router)
     app.include_router(ingest_router)
     app.include_router(webhook_router)
+
+    _patch_prometheus_included_router_route_names()
 
     # 운영 모니터링 — Prometheus instrumentator (feature12, PDF 0518_RAG.pdf #4).
     # ``/metrics`` 는 OpenAPI 스키마에서 제외(include_in_schema=False)하며 BFF 인증을

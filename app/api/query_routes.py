@@ -41,6 +41,7 @@
 --------------------------------------------------
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -338,7 +339,7 @@ async def _streaming_event_stream_inner(
     # feature19 status — searching. 그래프 내부 history/router/search/rerank 4단계를
     # 절충안으로 단일 phase 하나로 통합한다(astream 전환 없이 invoke 직전 1회 송신).
     yield _status_event("searching")
-    result_dict = streaming_graph.invoke(state)
+    result_dict = await asyncio.to_thread(streaming_graph.invoke, state)
     rerank_state = RagState.model_validate(result_dict)
 
     intent = rerank_state.intent or Intent.OPERATION_GUIDE
@@ -400,7 +401,7 @@ async def _streaming_event_stream_inner(
     # 시에도 중복 송신하지 않도록 플래그로 한 번만 보낸다).
     streaming_status_sent = False
     try:
-        for token_chunk in stream_openai_answer(
+        async for token_chunk in stream_openai_answer(
             api_key=api_key,
             model=primary_model,
             temperature=temperature,
@@ -433,7 +434,7 @@ async def _streaming_event_stream_inner(
             display_filter = CitationMarkerStreamFilter()
             yield _token_event("")
         used_model = fallback_model
-        for token_chunk in stream_openai_answer(
+        async for token_chunk in stream_openai_answer(
             api_key=api_key,
             model=fallback_model,
             temperature=temperature,

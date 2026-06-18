@@ -23,6 +23,7 @@ feature13 마이그레이션 + v2.6.0 ACL 정합:
 
 import json
 import warnings
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
@@ -385,7 +386,7 @@ def _streaming_client(
     # streaming OpenAI 호출은 monkeypatch — fake token chunk 를 순차 yield.
     from app.query.openai_streaming import StreamingTokenChunk
 
-    def _fake_stream_openai_answer(**_kwargs: Any) -> Any:
+    async def _fake_stream_openai_answer(**_kwargs: Any) -> AsyncIterator[StreamingTokenChunk]:
         for token in streaming_tokens:
             yield StreamingTokenChunk(text=token)
 
@@ -499,26 +500,21 @@ async def test_query_route_stream_true_rate_limit_falls_back_to_fallback_model(
 
     call_count = {"n": 0}
 
-    def _stream_with_rate_limit_then_success(**kwargs: Any) -> Any:
+    async def _stream_with_rate_limit_then_success(
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamingTokenChunk]:
         call_count["n"] += 1
         if call_count["n"] == 1:
             assert kwargs["model"] == "gpt-4o"
 
             # primary_model 호출 — 토큰 1개 yield 후 raise (UI 가 부분 답변 송신을
             # 받았다가 빈 token 으로 clear 되는 흐름까지 검증).
-            def _gen() -> Any:
-                yield StreamingTokenChunk(text="(부분)")
-                raise rate_limit_error
-
-            return _gen()
+            yield StreamingTokenChunk(text="(부분)")
+            raise rate_limit_error
         # fallback_model 호출 — 정상 token yield.
         assert kwargs["model"] == "gpt-4o-mini"
-
-        def _gen_fb() -> Any:
-            yield StreamingTokenChunk(text="정상")
-            yield StreamingTokenChunk(text="[#1]")
-
-        return _gen_fb()
+        yield StreamingTokenChunk(text="정상")
+        yield StreamingTokenChunk(text="[#1]")
 
     client = _streaming_client_with_stream_callable(
         populated_graph,

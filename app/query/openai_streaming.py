@@ -25,7 +25,7 @@
 --------------------------------------------------
 """
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -93,7 +93,7 @@ def build_streaming_user_prompt(
     return f"질문: {query}\n\n컨텍스트:\n{context_block}\n\n{writing_rules}\n\n답변:"
 
 
-def stream_openai_answer(
+async def stream_openai_answer(
     *,
     api_key: str,
     model: str,
@@ -101,12 +101,12 @@ def stream_openai_answer(
     timeout_seconds: int,
     query: str,
     top_chunks: list[Chunk],
-) -> Iterator[StreamingTokenChunk]:
+) -> AsyncIterator[StreamingTokenChunk]:
     """OpenAI Chat Completions streaming 으로 답변 토큰을 yield 한다.
 
     설계서 §4.6.4 정합 — 첫 토큰부터 사용자에게 즉시 송신 가능하도록 OpenAI 의
-    ``stream=True`` 모드를 사용한다. 본 generator 는 동기 (sync) iterator 이므로
-    SSE 라우트는 별도 async wrapping 없이 ``for chunk in iterator`` 로 소비 가능.
+    ``stream=True`` 모드를 사용한다. 본 generator 는 async iterator 이므로
+    SSE 라우트는 ``async for chunk in iterator`` 로 소비해야 한다.
 
     Args:
         api_key: OpenAI API key (외부 주입).
@@ -127,11 +127,11 @@ def stream_openai_answer(
         raise RuntimeError("stream_openai_answer requires non-empty top_chunks")
 
     # lazy import — openai 없는 환경에서도 모듈 import 가 깨지지 않게.
-    from openai import OpenAI
+    from openai import AsyncOpenAI
 
-    client = OpenAI(api_key=api_key, timeout=float(timeout_seconds))
+    client = AsyncOpenAI(api_key=api_key, timeout=float(timeout_seconds))
     user_prompt = build_streaming_user_prompt(query=query, top_chunks=top_chunks)
-    stream = client.chat.completions.create(
+    stream = await client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": _STREAMING_SYSTEM_PROMPT},
@@ -140,7 +140,7 @@ def stream_openai_answer(
         temperature=temperature,
         stream=True,
     )
-    for raw_chunk in stream:
+    async for raw_chunk in stream:
         delta = _extract_delta_content(raw_chunk)
         if delta:
             yield StreamingTokenChunk(text=delta)

@@ -4,7 +4,7 @@
 담당 영역 : ai-agent
 
 stream_openai_answer: OpenAI Chat Completions streaming 으로 token chunk 를 yield
-하는 sync generator. 실제 OpenAI streaming 호출은 mock 으로 대체하고, prompt 합성
+하는 async generator. 실제 OpenAI streaming 호출은 mock 으로 대체하고, prompt 합성
 정합·token 누적·빈 top_chunks 가드 분기를 검증한다.
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 import types
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
@@ -110,32 +110,40 @@ class _FakeStreamingClient:
         self.captured_kwargs: dict[str, Any] | None = None
         self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=self._create))
 
-    def _create(self, **kwargs: Any) -> Iterator[_FakeStreamChunk]:
+    async def _create(self, **kwargs: Any) -> AsyncIterator[_FakeStreamChunk]:
         self.captured_kwargs = kwargs
-        return iter(_FakeStreamChunk(token) for token in self._tokens)
+        return _fake_stream(self._tokens)
+
+
+async def _fake_stream(tokens: list[str | None]) -> AsyncIterator[_FakeStreamChunk]:
+    for token in tokens:
+        yield _FakeStreamChunk(token)
 
 
 def _install_fake_openai_for_streaming(
     monkeypatch: pytest.MonkeyPatch, client: _FakeStreamingClient
 ) -> None:
     module = types.ModuleType("openai")
-    module.OpenAI = lambda **kwargs: client  # type: ignore[attr-defined]
+    module.AsyncOpenAI = lambda **kwargs: client  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "openai", module)
 
 
-def test_streaming_yields_token_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+async def _collect_stream(**kwargs: Any) -> list[StreamingTokenChunk]:
+    return [chunk async for chunk in stream_openai_answer(**kwargs)]
+
+
+@pytest.mark.asyncio
+async def test_streaming_yields_token_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeStreamingClient(tokens=["답변 ", "시작 ", "[#1]"])
     _install_fake_openai_for_streaming(monkeypatch, client)
 
-    tokens = list(
-        stream_openai_answer(
-            api_key="sk-test",
-            model="gpt-4o",
-            temperature=0.2,
-            timeout_seconds=45,
-            query="EKS 절차?",
-            top_chunks=[_make_chunk()],
-        )
+    tokens = await _collect_stream(
+        api_key="sk-test",
+        model="gpt-4o",
+        temperature=0.2,
+        timeout_seconds=45,
+        query="EKS 절차?",
+        top_chunks=[_make_chunk()],
     )
     assert tokens == [
         StreamingTokenChunk(text="답변 "),
@@ -147,77 +155,73 @@ def test_streaming_yields_token_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.captured_kwargs["stream"] is True
 
 
-def test_streaming_skips_none_delta(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_streaming_skips_none_delta(monkeypatch: pytest.MonkeyPatch) -> None:
     # OpenAI chunk 마지막에는 delta.content=None 인 종료 chunk 가 올 수 있다 — skip.
     client = _FakeStreamingClient(tokens=["첫 토큰", None, "둘째 토큰", ""])
     _install_fake_openai_for_streaming(monkeypatch, client)
 
-    tokens = list(
-        stream_openai_answer(
-            api_key="sk-test",
-            model="gpt-4o",
-            temperature=0.2,
-            timeout_seconds=45,
-            query="질문",
-            top_chunks=[_make_chunk()],
-        )
+    tokens = await _collect_stream(
+        api_key="sk-test",
+        model="gpt-4o",
+        temperature=0.2,
+        timeout_seconds=45,
+        query="질문",
+        top_chunks=[_make_chunk()],
     )
     # None / 빈 문자열은 yield 되지 않는다.
     assert [t.text for t in tokens] == ["첫 토큰", "둘째 토큰"]
 
 
-def test_streaming_requires_non_empty_top_chunks() -> None:
+@pytest.mark.asyncio
+async def test_streaming_requires_non_empty_top_chunks() -> None:
     # top_chunks 비면 RuntimeError — 호출자가 검색 0건 분기에서 가드해야 함.
     with pytest.raises(RuntimeError):
-        list(
-            stream_openai_answer(
-                api_key="sk-test",
-                model="gpt-4o",
-                temperature=0.2,
-                timeout_seconds=45,
-                query="질문",
-                top_chunks=[],
-            )
+        await _collect_stream(
+            api_key="sk-test",
+            model="gpt-4o",
+            temperature=0.2,
+            timeout_seconds=45,
+            query="질문",
+            top_chunks=[],
         )
 
 
-def test_streaming_passes_model_and_temperature(
+@pytest.mark.asyncio
+async def test_streaming_passes_model_and_temperature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeStreamingClient(tokens=["ok"])
     _install_fake_openai_for_streaming(monkeypatch, client)
 
-    list(
-        stream_openai_answer(
-            api_key="sk-test",
-            model="gpt-4o-mini",
-            temperature=0.3,
-            timeout_seconds=30,
-            query="질문",
-            top_chunks=[_make_chunk()],
-        )
+    await _collect_stream(
+        api_key="sk-test",
+        model="gpt-4o-mini",
+        temperature=0.3,
+        timeout_seconds=30,
+        query="질문",
+        top_chunks=[_make_chunk()],
     )
     assert client.captured_kwargs is not None
     assert client.captured_kwargs["model"] == "gpt-4o-mini"
     assert client.captured_kwargs["temperature"] == 0.3
 
 
-def test_streaming_system_prompt_enforces_marker_rule(
+@pytest.mark.asyncio
+async def test_streaming_system_prompt_enforces_marker_rule(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # System prompt 가 [#N] 마커 규칙·plain text 출력·직접 답변 정책을 강제.
     client = _FakeStreamingClient(tokens=["ok"])
     _install_fake_openai_for_streaming(monkeypatch, client)
 
-    list(
-        stream_openai_answer(
-            api_key="sk-test",
-            model="gpt-4o",
-            temperature=0.2,
-            timeout_seconds=45,
-            query="질문",
-            top_chunks=[_make_chunk()],
-        )
+    await _collect_stream(
+        api_key="sk-test",
+        model="gpt-4o",
+        temperature=0.2,
+        timeout_seconds=45,
+        query="질문",
+        top_chunks=[_make_chunk()],
     )
     assert client.captured_kwargs is not None
     system_message = client.captured_kwargs["messages"][0]
