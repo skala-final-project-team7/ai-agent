@@ -149,6 +149,52 @@ def test_workflow_records_failed_item_and_finishes_partial_success(
     assert result.failed_items[0].retryable is False
 
 
+def test_workflow_emits_progress_for_page_refs_and_detail_fetches(tmp_path: Path) -> None:
+    events: list[dict] = []
+    client = FakeConfluenceClient(
+        spaces=[_space()],
+        pages_by_space={"space-001": [_page_ref("page-001"), _page_ref("page-002")]},
+        details_by_page={
+            "page-001": _page_detail("page-001"),
+            "page-002": ConfluenceApiError(
+                status_code=403,
+                error_type="permission_failure",
+                message="Page detail request denied.",
+                retryable=False,
+                item_level=True,
+                attempt_count=1,
+            ),
+        },
+    )
+
+    run_full_crawl_workflow(
+        config=_config(tmp_path),
+        client=client,
+        progress_callback=events.append,
+    )
+
+    assert events == [
+        {
+            "phase": "page_refs_collected",
+            "total_pages": 2,
+            "processed_pages": 0,
+            "failed_pages": 0,
+        },
+        {
+            "phase": "page_detail_processed",
+            "total_pages": 2,
+            "processed_pages": 1,
+            "failed_pages": 0,
+        },
+        {
+            "phase": "page_detail_processed",
+            "total_pages": 2,
+            "processed_pages": 1,
+            "failed_pages": 1,
+        },
+    ]
+
+
 def test_workflow_marks_job_failed_when_list_spaces_fails(tmp_path: Path) -> None:
     client = FakeConfluenceClient(
         spaces=[],

@@ -75,6 +75,9 @@ class DataSyncClient(Protocol):
         """Page detail을 반환한다."""
 
 
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
 @dataclass(slots=True)
 class DataSyncWorkflowState:
     """Data Sync workflow node 간 공유 state."""
@@ -84,6 +87,7 @@ class DataSyncWorkflowState:
     snapshot_repository: SnapshotRepository
     sync_id: str
     generated_at: str
+    progress_callback: ProgressCallback | None = None
     previous_snapshot: PageSnapshot | None = None
     spaces: list[dict[str, Any]] = field(default_factory=list)
     current_pages: list[PageSnapshotItem] = field(default_factory=list)
@@ -142,6 +146,7 @@ def run_data_sync_workflow(
     snapshot_repository: SnapshotRepository | None = None,
     now: Callable[[], str] | None = None,
     force_sequential: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> DataSyncWorkflowResult:
     """Data Sync Agent delta sync workflow를 실행한다."""
     config.validate()
@@ -156,6 +161,7 @@ def run_data_sync_workflow(
         snapshot_repository=resolved_repository,
         sync_id=sync_id,
         generated_at=generated_at,
+        progress_callback=progress_callback,
     )
 
     final_state = workflow.run(state)
@@ -377,6 +383,7 @@ def fetch_changed_page_details(state: DataSyncWorkflowState) -> DataSyncWorkflow
         sync_id=state.sync_id,
         cloud_id=state.config.cloud_id,
         detected_at=state.generated_at,
+        progress_callback=state.progress_callback,
     )
     state.changed_documents = processing_result.changed_documents
     state.failed_items.extend(processing_result.failed_items)

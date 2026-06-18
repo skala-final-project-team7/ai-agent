@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import pytest
-
 from data_sync_agent.confluence import ConfluenceApiError
 from data_sync_agent.schemas import ChangeType, PageSnapshot, PageSnapshotItem
 from data_sync_agent.sync.diff_engine import PageChange, diff_snapshots
@@ -281,6 +279,76 @@ def test_partial_page_detail_failure_records_failed_item_and_continues() -> None
     assert failed_item["stage"] == "fetch_page_detail"
     assert failed_item["item_id"] == "failed"
     assert "Authorization" not in failed_item["error_message"]
+
+
+def test_changed_page_processor_emits_changed_page_progress() -> None:
+    events: list[dict] = []
+    cloud_id = _runtime_value("cloud")
+    success_page = _page(cloud_id=cloud_id, page_id="success")
+    failed_page = _page(cloud_id=cloud_id, page_id="failed")
+    unchanged_page = _page(cloud_id=cloud_id, page_id="unchanged")
+    client = FakePageDetailClient(
+        {
+            "success": _detail(page_id="success", version_number=1, html="<p>ok</p>"),
+            "failed": ConfluenceApiError(
+                status_code=503,
+                error_type="temporary_failure",
+                message="temporary failure",
+                retryable=True,
+                item_level=True,
+                attempt_count=1,
+            ),
+        }
+    )
+
+    ChangedPageProcessor(client=client).process(
+        [
+            PageChange(
+                change_type=ChangeType.NEW,
+                page_key=str(success_page.page_key),
+                previous=None,
+                current=success_page,
+            ),
+            PageChange(
+                change_type=ChangeType.UPDATED,
+                page_key=str(failed_page.page_key),
+                previous=failed_page,
+                current=failed_page,
+            ),
+            PageChange(
+                change_type=ChangeType.UNCHANGED,
+                page_key=str(unchanged_page.page_key),
+                previous=unchanged_page,
+                current=unchanged_page,
+            ),
+        ],
+        sync_id=_runtime_value("sync"),
+        cloud_id=cloud_id,
+        detected_at="2026-05-15T02:00:00Z",
+        progress_callback=events.append,
+    )
+
+    assert client.requested_page_ids == ["success", "failed"]
+    assert events == [
+        {
+            "phase": "changed_pages_detected",
+            "total_pages": 2,
+            "processed_pages": 0,
+            "failed_pages": 0,
+        },
+        {
+            "phase": "changed_page_processed",
+            "total_pages": 2,
+            "processed_pages": 1,
+            "failed_pages": 0,
+        },
+        {
+            "phase": "changed_page_processed",
+            "total_pages": 2,
+            "processed_pages": 1,
+            "failed_pages": 1,
+        },
+    ]
 
 
 def test_changed_document_metadata_contains_required_fields() -> None:

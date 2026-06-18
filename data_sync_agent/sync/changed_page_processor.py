@@ -21,6 +21,8 @@ from __future__ import annotations
 --------------------------------------------------
 """
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -34,6 +36,9 @@ from data_sync_agent.schemas import (
     FailedItemType,
 )
 from data_sync_agent.sync.diff_engine import PageChange
+
+ProgressCallback = Callable[[dict[str, Any]], None]
+_LOGGER = logging.getLogger(__name__)
 
 
 class PageDetailClient(Protocol):
@@ -64,18 +69,31 @@ class ChangedPageProcessor:
         sync_id: str,
         cloud_id: str,
         detected_at: str,
+        progress_callback: ProgressCallback | None = None,
     ) -> ChangedPageProcessingResult:
         """new/updated Page만 상세 조회하고 partial failure를 failed item으로 기록한다."""
         changed_documents: list[ChangedDocument] = []
         failed_items: list[FailedItem] = []
+        work_items = [
+            page_change
+            for page_change in page_changes
+            if page_change.change_type in {ChangeType.NEW, ChangeType.UPDATED}
+            and page_change.current is not None
+        ]
+        processed_pages = 0
+        failed_pages = 0
 
-        for page_change in page_changes:
-            if page_change.change_type not in {ChangeType.NEW, ChangeType.UPDATED}:
-                continue
-            if page_change.current is None:
-                continue
+        _emit_progress(
+            progress_callback,
+            phase="changed_pages_detected",
+            total_pages=len(work_items),
+            processed_pages=0,
+            failed_pages=0,
+        )
 
+        for page_change in work_items:
             page = page_change.current
+            assert page is not None
             try:
                 page_detail = self.client.get_page_detail(page.page_id)
                 changed_documents.append(
@@ -87,7 +105,9 @@ class ChangedPageProcessor:
                         detected_at=detected_at,
                     )
                 )
+                processed_pages += 1
             except Exception as exc:
+                failed_pages += 1
                 failed_items.append(
                     _failed_item_from_exception(
                         exc,
@@ -95,6 +115,13 @@ class ChangedPageProcessor:
                         page_id=page.page_id,
                     )
                 )
+            _emit_progress(
+                progress_callback,
+                phase="changed_page_processed",
+                total_pages=len(work_items),
+                processed_pages=processed_pages,
+                failed_pages=failed_pages,
+            )
 
         return ChangedPageProcessingResult(
             changed_documents=changed_documents,
@@ -235,6 +262,18 @@ def _safe_error_message(message: str) -> str:
         .replace("Bearer", "<redacted-auth-scheme>")
         .replace("access_token", "<redacted-token-field>")
     )
+
+
+def _emit_progress(
+    progress_callback: ProgressCallback | None,
+    **payload: Any,
+) -> None:
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(payload)
+    except Exception:  # noqa: BLE001 - progress reporting must not fail sync
+        _LOGGER.warning("data sync progress callback failed", exc_info=True)
 
 
 __all__ = [

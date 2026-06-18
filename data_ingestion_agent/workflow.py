@@ -21,6 +21,8 @@ from __future__ import annotations
 --------------------------------------------------
 """
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import uuid4
@@ -42,6 +44,9 @@ from data_ingestion_agent.schemas import (
     SpaceInfo,
 )
 from data_ingestion_agent.storage import LocalFileRepository, LocalWriteResult
+
+ProgressCallback = Callable[[dict[str, Any]], None]
+_LOGGER = logging.getLogger(__name__)
 
 
 class DataIngestionClient(Protocol):
@@ -125,11 +130,13 @@ class DataIngestionWorkflowRunner:
         client: DataIngestionClient | None = None,
         repository: LocalFileRepository | None = None,
         mapper: PageDetailMapper | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> None:
         self.config = config
         self.client = client or ConfluenceClient(config=config)
         self.repository = repository or LocalFileRepository(config.output_dir)
         self.mapper = mapper or PageDetailMapper()
+        self.progress_callback = progress_callback
 
     def run(self) -> DataIngestionWorkflowResult:
         """정해진 node 순서로 full crawl workflow를 실행한다."""
@@ -228,6 +235,12 @@ class DataIngestionWorkflowRunner:
                 PageRefContext(space=space, page_ref=page_ref)
                 for page_ref in page_refs
             )
+        self._emit_progress(
+            phase="page_refs_collected",
+            total_pages=len(state.page_refs),
+            processed_pages=0,
+            failed_pages=0,
+        )
         return state
 
     def fetch_page_details(
@@ -249,6 +262,12 @@ class DataIngestionWorkflowRunner:
                         error=error,
                     )
                 )
+                self._emit_progress(
+                    phase="page_detail_processed",
+                    total_pages=len(state.page_refs),
+                    processed_pages=len(state.page_details),
+                    failed_pages=_count_fetch_page_detail_failures(state.failed_items),
+                )
                 continue
             state.page_details.append(
                 PageDetailContext(
@@ -256,6 +275,12 @@ class DataIngestionWorkflowRunner:
                     page_ref=page_ref_context.page_ref,
                     page_detail=page_detail,
                 )
+            )
+            self._emit_progress(
+                phase="page_detail_processed",
+                total_pages=len(state.page_refs),
+                processed_pages=len(state.page_details),
+                failed_pages=_count_fetch_page_detail_failures(state.failed_items),
             )
         return state
 
@@ -356,18 +381,28 @@ class DataIngestionWorkflowRunner:
         """
         return state
 
+    def _emit_progress(self, **payload: Any) -> None:
+        if self.progress_callback is None:
+            return
+        try:
+            self.progress_callback(payload)
+        except Exception:  # noqa: BLE001 - progress reporting must not fail ingestion
+            _LOGGER.warning("data ingestion progress callback failed", exc_info=True)
+
 
 def run_full_crawl_workflow(
     *,
     config: DataIngestionConfig,
     client: DataIngestionClient | None = None,
     repository: LocalFileRepository | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> DataIngestionWorkflowResult:
     """Data Ingestion full crawl workflow를 실행한다."""
     return DataIngestionWorkflowRunner(
         config=config,
         client=client,
         repository=repository,
+        progress_callback=progress_callback,
     ).run()
 
 
@@ -419,4 +454,13 @@ def _has_list_spaces_failure(failed_items: list[FailedItem]) -> bool:
     return any(
         failed_item.stage == FailedItemStage.LIST_SPACES
         for failed_item in failed_items
+    )
+
+
+def _count_fetch_page_detail_failures(failed_items: list[FailedItem]) -> int:
+    return sum(
+        1
+        for failed_item in failed_items
+        if failed_item.stage == FailedItemStage.FETCH_PAGE_DETAIL
+        and failed_item.item_type == FailedItemType.PAGE
     )
