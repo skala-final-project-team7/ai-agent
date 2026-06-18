@@ -86,8 +86,9 @@ from app.schemas.response import QueryResponse
 from app.storage.chunk_lookup import ChunkTextLookup, FakeChunkTextLookup
 from app.storage.qdrant_client import QdrantPoolStore
 
-# history-manager-agent의 LLM provider — runtime 인터페이스 의존성 회피를 위해 Any.
+# history-manager-agent의 LLM provider/config — runtime 인터페이스 의존성 회피를 위해 Any.
 HistoryProvider = Any
+HistoryConfig = Any
 
 # query-routing-agent의 LLM provider / config — runtime 인터페이스 의존성 회피를 위해 Any.
 # 실제 타입은 RoutingLLMProvider / QueryRoutingConfig. manage_router 가 None 일 때 fake
@@ -134,9 +135,11 @@ class QueryGraphDeps:
     # Chunk 풀 텍스트·첨부 download_url lookup (풀 텍스트 lookup 후속, 2026-05-18).
     # 기본값은 빈 FakeChunkTextLookup — 미주입 환경에서도 안전 동작 (download_url=None).
     chunk_lookup: ChunkTextLookup = field(default_factory=FakeChunkTextLookup)
-    # 멀티턴 히스토리 관리자 LLM provider — None이면 manage_history가
-    # FakeHistoryLLMProvider 기본을 사용한다.
+    # 멀티턴 히스토리 관리자 LLM provider/config — None이면 manage_history가
+    # FakeHistoryLLMProvider + 기본 HistoryManagerConfig를 사용한다. 운영
+    # build_real_deps는 OpenAIHistoryLLMProvider + 모델 지정 config를 주입한다.
     history_provider: HistoryProvider | None = None
+    history_config: HistoryConfig | None = None
 
     # 질의 라우터 LLM provider / config — None 이면 manage_router 가
     # FakeRoutingLLMProvider + 기본 QueryRoutingConfig 를 사용한다.
@@ -191,7 +194,14 @@ def build_query_graph(deps: QueryGraphDeps) -> Any:
     # 노드 등록 — 외부 의존성은 functools.partial 로 wiring.
     # NOTE: 노드명은 RagState 필드명과 네임스페이스를 공유한다 (LangGraph 1.x 제약).
     # 히스토리 관리자 노드는 RagState.history 필드와 충돌하므로 'manage_history'로 둔다.
-    builder.add_node("manage_history", partial(manage_history, provider=deps.history_provider))
+    builder.add_node(
+        "manage_history",
+        partial(
+            manage_history,
+            provider=deps.history_provider,
+            history_config=deps.history_config,
+        ),
+    )
     # 라우터 노드는 manage_router 기본값일 때만 routing_provider / routing_config 를
     # functools.partial 로 주입한다. 외부에서 주입된 사용자 정의 router_node 는 이미
     # provider 가 captured 되어 있다고 가정하고 그대로 등록 (history 패턴 정합).
@@ -298,7 +308,14 @@ def build_query_graph_for_streaming(deps: QueryGraphDeps) -> Any:
     builder = StateGraph(RagState)
 
     # 노드 등록 — build_query_graph 와 동일 wiring. partial 패턴 정합.
-    builder.add_node("manage_history", partial(manage_history, provider=deps.history_provider))
+    builder.add_node(
+        "manage_history",
+        partial(
+            manage_history,
+            provider=deps.history_provider,
+            history_config=deps.history_config,
+        ),
+    )
     if deps.router_node is manage_router:
         builder.add_node(
             "router",

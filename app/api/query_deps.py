@@ -184,6 +184,8 @@ def build_real_deps(settings: Settings | None = None) -> QueryGraphDeps:
     from app.query.reranker.cross_encoder import CrossEncoderRerankerImpl
     from app.query.routing_transport import build_openai_routing_transport
     from app.storage.chunk_lookup import MongoChunkTextLookup
+    from history_manager_agent.config import HistoryManagerConfig
+    from history_manager_agent.llm import OpenAIHistoryLLMProvider
     from query_routing_agent.config import QueryRoutingConfig
     from query_routing_agent.llm import OpenAIRoutingLLMProvider
 
@@ -205,6 +207,15 @@ def build_real_deps(settings: Settings | None = None) -> QueryGraphDeps:
     # 주입" 정합 — provider 가 ``os.environ.get("OPENAI_API_KEY")`` fallback 을 거치지
     # 않도록 직접 주입한다 (feature12, 2026-05-19).
     openai_api_key = settings.openai_api_key.get_secret_value()
+    # 멀티턴 히스토리 분류기도 운영 모드에서는 OpenAI provider 를 사용한다. 그래프에는
+    # provider seam 이 있었지만 build_real_deps 에서 주입하지 않아 FakeHistoryLLMProvider
+    # (항상 new_topic)로 떨어지던 배선 누락을 보완한다. classify_history 는 config.model
+    # 로 LLM 요청을 만들기 때문에 보조 모델명을 지정한 config 를 provider 와 함께 넘긴다.
+    history_config = HistoryManagerConfig(
+        model=settings.llm_aux_model,
+        openai_api_key=openai_api_key,
+    )
+    history_provider = OpenAIHistoryLLMProvider(config=history_config, api_key=openai_api_key)
     # 라우터는 운영 모드에서 OpenAI provider 를 사용한다. ``__init__(config, api_key,
     # transport)`` 로 settings 키 + 본 저장소가 보강한 transport 를 직접 주입한다.
     # build_openai_routing_transport 가 4종 의도 정의·예시·구분 기준·출력 schema 를
@@ -260,6 +271,8 @@ def build_real_deps(settings: Settings | None = None) -> QueryGraphDeps:
         store=store,
         reranker=reranker,
         chunk_lookup=chunk_lookup,
+        history_provider=history_provider,
+        history_config=history_config,
         routing_provider=routing_provider,
         routing_config=routing_config,
         verifier_provider=verifier_provider,

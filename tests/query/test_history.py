@@ -9,6 +9,7 @@ manage_history: vendoring한 history-manager-agent 로직을 in-process로 호�
 
 from app.query.history import manage_history
 from app.schemas.rag_state import HistoryDecision, HistoryTurn, RagState
+from history_manager_agent.config import HistoryManagerConfig
 from history_manager_agent.llm import FakeHistoryLLMProvider
 
 
@@ -110,3 +111,12 @@ def test_history_turns_converted_and_passed_to_provider() -> None:
     manage_history(_state(history=_history()), provider=fake)
     assert len(fake.requests) == 1
     assert len(fake.requests[0].history_context) == 2
+
+
+def test_history_config_model_reaches_provider_request() -> None:
+    # 운영 wiring은 모델 지정 config를 provider와 함께 주입한다. classify_history가
+    # config.model로 LLM 요청을 만들므로 request.model에 그대로 반영되어야 한다.
+    fake = _fake("follow_up")
+    config = HistoryManagerConfig(model="gpt-4o-mini")
+    manage_history(_state(history=_history()), provider=fake, history_config=config)
+    assert fake.requests[0].model == "gpt-4o-mini"

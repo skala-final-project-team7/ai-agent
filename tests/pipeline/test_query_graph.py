@@ -31,10 +31,12 @@ from app.query.formatter import BLOCKED_ANSWER_MESSAGE
 from app.query.reranker.base import CrossEncoderReranker, FakeCrossEncoderReranker
 from app.schemas.chunk import Chunk, ChunkMetadata
 from app.schemas.enums import Intent, LlmModel, SourceType, VerificationStatus
-from app.schemas.rag_state import RagState
+from app.schemas.rag_state import HistoryTurn, RagState
 from app.schemas.response import Verification
 from app.storage.mongo_cache import FakeEmbeddingCache
 from app.storage.qdrant_client import QdrantPoolStore
+from history_manager_agent.config import HistoryManagerConfig
+from history_manager_agent.llm import FakeHistoryLLMProvider
 
 # Qdrant `:memory:` 모드의 payload-index noop 경고 차단.
 warnings.filterwarnings("ignore", message="Payload indexes have no effect.*")
@@ -120,6 +122,8 @@ def _initial_state(
     *,
     query: str = "alpha",
     groups: list[str] | None = None,
+    conversation_id: str | None = None,
+    history: list[HistoryTurn] | None = None,
     acl_filter_override: object = ...,
 ) -> RagState:
     actual_groups = groups if groups is not None else ["space:CLOUD"]
@@ -131,6 +135,8 @@ def _initial_state(
         query=query,
         user_id="taesung",
         groups=actual_groups,
+        conversation_id=conversation_id,
+        history=history if history is not None else [],
         acl_filter=acl_filter,  # type: ignore[arg-type]
     )
 
@@ -168,6 +174,40 @@ def test_build_query_graph_compiles_without_node_state_key_collision(
     """
     # 컴파일 자체가 통과하면 노드명·필드명 충돌이 없음 — 별도 단언 불필요.
     build_query_graph(_deps(dense, sparse, populated_store))
+
+
+@pytest.mark.parametrize("builder", [build_query_graph, build_query_graph_for_streaming])
+def test_query_graph_passes_history_config_to_manage_history(
+    builder,
+    dense: FakeDenseEmbedder,
+    sparse: FakeSparseEmbedder,
+    empty_store: QdrantPoolStore,
+) -> None:
+    """non-streaming/streaming 그래프 모두 history provider/config를 manage_history에 전달한다."""
+    fake_history = FakeHistoryLLMProvider(
+        {"history_decision": "follow_up", "confidence": 0.9, "reason": "follow-up"}
+    )
+    history_config = HistoryManagerConfig(model="gpt-4o-mini")
+    graph = builder(
+        _deps(
+            dense,
+            sparse,
+            empty_store,
+            history_provider=fake_history,
+            history_config=history_config,
+        )
+    )
+    graph.invoke(
+        _initial_state(
+            query="그럼 재발 방지는?",
+            conversation_id="conv-1",
+            history=[
+                HistoryTurn(role="user", content="RDS Connection Pool 고갈 장애가 있었어."),
+                HistoryTurn(role="assistant", content="PgBouncer와 CloudWatch 알람을 확인합니다."),
+            ],
+        )
+    )
+    assert fake_history.requests[0].model == "gpt-4o-mini"
 
 
 # --- feature14: SSE streaming 용 partial graph 회귀 ---

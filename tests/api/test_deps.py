@@ -76,7 +76,7 @@ class _FakeRealReranker(CrossEncoderReranker):
 
 @pytest.fixture()
 def patched_real_adapters(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """build_real_deps가 호출하는 실 어댑터 6종을 모두 가짜로 대체한다.
+    """build_real_deps가 호출하는 실 어댑터들을 모두 가짜로 대체한다.
 
     실 어댑터들은 build_real_deps 함수 본문 내 lazy import이므로 원본 모듈
     (``app.ingestion.embedder.dense`` 등)의 클래스 자체를 교체한다. Qdrant
@@ -84,8 +84,10 @@ def patched_real_adapters(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     Query Routing Agent 의 ``OpenAIRoutingLLMProvider`` 도 sentinel 클래스로
     대체해 OPENAI_API_KEY 환경변수 없이 회귀 보호 — feature12 에서 ``from_config``
     (env fallback) → ``__init__(config, api_key)`` 직접 호출로 변경됐다. Answer
-    Verification Agent 의 ``OpenAIEvaluatorProvider`` 도 sentinel 로 대체.
+    Verification Agent 의 ``OpenAIEvaluatorProvider`` 와 History Manager Agent 의
+    ``OpenAIHistoryLLMProvider`` 도 sentinel 로 대체.
     """
+    import history_manager_agent.llm as history_llm_module
     import query_routing_agent.llm as routing_llm_module
 
     captured: dict[str, Any] = {
@@ -93,6 +95,7 @@ def patched_real_adapters(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "sparse_init": None,
         "reranker_init": None,
         "store_from_settings": None,
+        "history_provider_init": None,
         "routing_provider_init": None,
         "verifier_provider_init": None,
         "generator_provider_init": None,
@@ -133,6 +136,17 @@ def patched_real_adapters(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 "transport": transport,
             }
 
+    class _FakeOpenAIHistory:
+        """OpenAIHistoryLLMProvider 대체 — API key 검증·실 HTTP transport 회피."""
+
+        def __init__(self, *, config: Any, api_key: str, transport: Any | None = None) -> None:
+            captured["history_provider_init"] = {
+                "config": config,
+                "api_key_provided": bool(api_key),
+                "transport": transport,
+            }
+            self.config = config
+
     class _FakeOpenAIEvaluator:
         """OpenAIEvaluatorProvider 대체 — API key 검증·실 HTTP transport 회피."""
 
@@ -169,6 +183,7 @@ def patched_real_adapters(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(sparse_module, "BM25SparseEmbedder", _fake_sparse_factory)
     monkeypatch.setattr(reranker_module, "CrossEncoderRerankerImpl", _fake_reranker_factory)
     monkeypatch.setattr(QdrantPoolStore, "from_settings", classmethod(_fake_from_settings))
+    monkeypatch.setattr(history_llm_module, "OpenAIHistoryLLMProvider", _FakeOpenAIHistory)
     monkeypatch.setattr(routing_llm_module, "OpenAIRoutingLLMProvider", _FakeOpenAIRouting)
     monkeypatch.setattr(verifier_providers_module, "OpenAIEvaluatorProvider", _FakeOpenAIEvaluator)
     monkeypatch.setattr(generation_module, "OpenAIAnswerLLMProvider", _FakeOpenAIAnswer)
@@ -203,6 +218,15 @@ def test_build_real_deps_wires_real_adapter_classes(
     assert patched_real_adapters["store_from_settings"]["dense_dimension"] == 1024
     # 라우터 provider 는 GPT-4o-mini 로 설정돼야 한다 (app/CLAUDE.md §5 라우팅 정책).
     assert patched_real_adapters["routing_provider_init"]["config"].model == "gpt-4o-mini"
+    # 히스토리 매니저 provider 도 보조 모델 config 로 wiring 되어야 한다. classify_history
+    # 가 config.model 로 LLM 요청을 만들기 때문에 provider/config 둘 다 QueryGraphDeps에
+    # 들어가야 후속질문 문맥화가 운영에서 동작한다.
+    history_init = patched_real_adapters["history_provider_init"]
+    assert history_init is not None
+    assert history_init["config"].model == _settings().llm_aux_model
+    assert deps.history_provider is not None
+    assert deps.history_config is not None
+    assert deps.history_config.model == _settings().llm_aux_model
     # Fake 어댑터는 PoC 경로에서만 사용되어야 한다 — 운영 모드는 Fake 사용 금지
     assert not isinstance(deps.dense_embedder, FakeDenseEmbedder)
     assert not isinstance(deps.sparse_embedder, FakeSparseEmbedder)
@@ -261,6 +285,11 @@ def test_build_real_deps_passes_openai_api_key_to_all_providers(
     routing_init = patched_real_adapters["routing_provider_init"]
     assert routing_init is not None
     assert routing_init["api_key_provided"] is True
+    # 히스토리 — OpenAIHistoryLLMProvider(api_key=...) 직접 주입 + config 에도 키 전달.
+    history_init = patched_real_adapters["history_provider_init"]
+    assert history_init is not None
+    assert history_init["api_key_provided"] is True
+    assert history_init["config"].openai_api_key == "sk-feature12-sentinel"
     # feature17a 후속 — transport callable (build_openai_routing_transport 결과) 가
     # 명시 주입돼 vendoring 패키지의 _default_transport 를 대체한다.
     assert routing_init["transport"] is not None

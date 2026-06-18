@@ -20,6 +20,8 @@
 --------------------------------------------------
 """
 
+import logging
+
 from app.schemas.rag_state import HistoryDecision, RagState
 from history_manager_agent.config import HistoryManagerConfig
 from history_manager_agent.context import apply_context_policy
@@ -41,11 +43,14 @@ _DEFAULT_FAKE_CLASSIFICATION = {
     "reason": "Default fake provider classification (no LLM configured).",
 }
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def manage_history(
     state: RagState,
     *,
     provider: HistoryLLMProvider | None = None,
+    history_config: HistoryManagerConfig | None = None,
 ) -> RagState:
     """멀티턴 히스토리 관리자 노드 — 히스토리를 판단해 RagState.history_decision을 채운다.
 
@@ -58,7 +63,10 @@ def manage_history(
     Args:
         state: Query 파이프라인 상태. `query`/`user_id`/`conversation_id`/`history`를 읽는다.
         provider: 히스토리 분류용 LLM provider. None이면 FakeHistoryLLMProvider를 쓴다
-            (PoC·테스트). 실제 운영에서는 OpenAIHistoryLLMProvider를 주입한다.
+            (PoC·테스트). 운영에서는 OpenAIHistoryLLMProvider를 주입한다.
+        history_config: agent 설정. `classify_history`가 LLM 요청을 만들 때
+            `config.model`/`temperature`/`timeout_seconds`를 사용하므로, 실 provider를
+            주입할 때는 모델을 지정한 config를 함께 주입해야 한다.
 
     Returns:
         `history_decision`이 채워진 RagState (입력 state를 갱신해 반환).
@@ -74,7 +82,7 @@ def manage_history(
         )
         return state
 
-    config = HistoryManagerConfig()
+    config = history_config or HistoryManagerConfig()
     selected_provider = provider or FakeHistoryLLMProvider(_DEFAULT_FAKE_CLASSIFICATION)
 
     # RagState.history(HistoryTurn)를 agent 입력 payload로 변환한다. RagState의 HistoryTurn은
@@ -124,5 +132,10 @@ def manage_history(
         confidence=question_result.confidence,
         reason=question_result.reason,
         warnings=list(question_result.warnings),
+    )
+    _LOGGER.debug(
+        "history decision=%s contextualized_question=%r",
+        state.history_decision.decision,
+        state.history_decision.contextualized_question,
     )
     return state
